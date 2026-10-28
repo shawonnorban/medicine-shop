@@ -8,6 +8,18 @@
     "db:migrate": "pnpm --filter @medshop/api db:migrate",
     "db:seed": "pnpm --filter @medshop/api db:seed",
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "setup": "node scripts/setup.mjs",
+    "dev": "concurrently -k -n api,shop,admin -c blue,green,magenta \"pnpm dev:api\" \"pnpm dev:web\" \"pnpm dev:admin\"",
+    "dev:admin": "pnpm --filter @medshop/admin dev",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "test": "pnpm --filter @medshop/api test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20.6"
   }
 }
