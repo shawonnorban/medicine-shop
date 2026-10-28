@@ -7,8 +7,11 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const reseed = process.argv.includes('--reseed');
-const sh = (cmd, args, opts = {}) => spawnSync(cmd, args, { stdio: 'inherit', shell: process.platform === 'win32', ...opts });
-const quiet = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32', ...opts });
+// On Windows, pnpm and docker are .cmd shims that need a shell. Passing one command string (instead of an args array)
+// keeps Node 24 from printing the DEP0190 warning; all arguments here are fixed words, never user input.
+const run = (cmd, args, opts) => (process.platform === 'win32' ? spawnSync([cmd, ...args].join(' '), { shell: true, ...opts }) : spawnSync(cmd, args, opts));
+const sh = (cmd, args, opts = {}) => run(cmd, args, { stdio: 'inherit', ...opts });
+const quiet = (cmd, args, opts = {}) => run(cmd, args, { encoding: 'utf8', ...opts });
 const step = (t) => console.log(`\n▸ ${t}`);
 const die = (m) => { console.error(`\n✖ ${m}\n`); process.exit(1); };
 
