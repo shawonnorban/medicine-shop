@@ -26,7 +26,7 @@ if (!existsSync('.env')) {
 } else console.log('  .env already exists');
 const web = 'apps/storefront/.env.local';
 if (!existsSync(web)) {
-  writeFileSync(web, 'API_URL=http://localhost:4000\nNEXT_PUBLIC_API_URL=http://localhost:4000\n'); console.log(`  created ${web}`);
+  writeFileSync(web, 'API_URL=http://127.0.0.1:4000\nNEXT_PUBLIC_API_URL=http://127.0.0.1:4000\n'); console.log(`  created ${web}`);
 }
 
 step('Database');
@@ -76,5 +76,5 @@ console.log(`
 
   Website        http://localhost:3000
   Admin + POS    http://localhost:3100
-  API            http://localhost:4000/health
+  API            http://127.0.0.1:4000/health
 `);

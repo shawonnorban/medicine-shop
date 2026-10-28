@@ -1,5 +1,8 @@
-export const API_URL = process.env.API_URL ?? 'http://localhost:4000';
-export const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+// "localhost" can resolve to IPv6 (::1) first on Windows with Node 18+, while the API listens on IPv4 only, which makes fetch fail.
+// Pointing at 127.0.0.1 always works, so any localhost URL is rewritten.
+const v4 = (u: string) => u.replace('//localhost', '//127.0.0.1');
+export const API_URL = v4(process.env.API_URL ?? 'http://127.0.0.1:4000');
+export const PUBLIC_API_URL = v4(process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:4000');
 
 export type Category = { id: number; slug: string; nameBn: string; nameEn: string; icon: string | null; productCount: number };
 export type ProductCardData = {
