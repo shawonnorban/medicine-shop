@@ -1,10 +1,7 @@
 import { sql } from '../db/client.js';
 
-export const DELIVERY_FEE = { dhaka: 60, outside: 120 } as const;
-export const FREE_DELIVERY_OVER = 1500;
-
 export type OrderInput = {
-  name: string; phone: string; address: string; zone: 'dhaka' | 'outside'; note?: string;
+  name: string; phone: string; address: string; zone: string; note?: string;
   items: { variantId: number; qty: number }[];
 };
 
@@ -56,7 +53,9 @@ export async function createOrder(input: OrderInput) {
     }
 
     const subtotal = ids.reduce((s, id) => s + byId.get(id)!.price * want.get(id)!, 0);
-    const fee = subtotal >= FREE_DELIVERY_OVER ? 0 : DELIVERY_FEE[input.zone];
+    const [zone] = await tx`SELECT fee, free_over FROM delivery_zones WHERE code = ${input.zone} AND is_active`;
+    if (!zone) throw new OrderError('invalid_zone');
+    const fee = zone.free_over != null && subtotal >= zone.free_over ? 0 : zone.fee;
     const total = subtotal + fee;
 
     const [order] = await tx`
@@ -87,18 +86,23 @@ export async function getOrder(orderNo: string, phone: string) {
   return { ...order, items };
 }
 
-/** Customers can cancel only while the order is still pending; stock goes back via reversing ledger rows. */
+/** Put every unit of an order back into stock with reversing ledger rows (idempotent per order). */
+export async function restoreStock(tx: Tx, orderId: number) {
+  await tx`
+    INSERT INTO stock_movements (batch_id, qty, reason, ref_type, ref_id)
+    SELECT batch_id, -SUM(qty), 'return_customer', 'order', ${orderId}
+    FROM stock_movements WHERE ref_type = 'order' AND ref_id = ${orderId} AND reason IN ('sale_online', 'return_customer')
+    GROUP BY batch_id HAVING SUM(qty) <> 0`;
+}
+
+/** Customers can cancel only while the order is still pending. */
 export async function cancelOrder(orderNo: string, phone: string) {
   return sql.begin(async (tx) => {
     const [o] = await tx`SELECT id, status FROM orders WHERE order_no = ${orderNo} AND phone = ${phone} FOR UPDATE`;
     if (!o) throw new OrderError('not_found', undefined, 404);
     if (o.status === 'cancelled') return { status: 'cancelled' as const };
     if (o.status !== 'pending') throw new OrderError('cannot_cancel', { status: o.status }, 409);
-    await tx`
-      INSERT INTO stock_movements (batch_id, qty, reason, ref_type, ref_id)
-      SELECT batch_id, -SUM(qty), 'return_customer', 'order', ${o.id}
-      FROM stock_movements WHERE ref_type = 'order' AND ref_id = ${o.id} AND reason = 'sale_online'
-      GROUP BY batch_id HAVING SUM(qty) <> 0`;
+    await restoreStock(tx, o.id);
     await tx`UPDATE orders SET status = 'cancelled', updated_at = now() WHERE id = ${o.id}`;
     return { status: 'cancelled' as const };
   });

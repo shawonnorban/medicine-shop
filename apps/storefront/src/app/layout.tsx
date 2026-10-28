@@ -3,7 +3,7 @@ import { Hind_Siliguri, Inter } from 'next/font/google';
 import { CartProvider } from '@/lib/cart';
 import { Header } from '@/components/Header';
 import { FloatingCart } from '@/components/FloatingCart';
-import { api, type Category } from '@/lib/api';
+import { api, getConfig, type Category } from '@/lib/api';
 import Link from 'next/link';
 import './globals.css';
 
@@ -17,12 +17,12 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: '#0F6B3A', width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const cats = (await api<Category[]>('/v1/categories', 300)) ?? [];
+  const [cats, { store }] = await Promise.all([api<Category[]>('/v1/categories', 60).then((c) => c ?? []), getConfig()]);
   return (
     <html lang="bn" className={`${bn.variable} ${en.variable}`}>
       <body>
         <CartProvider>
-          <Header />
+          <Header store={store} />
           <nav className="menu"><div className="wrap">
             <Link href="/">হোম</Link>
             {cats.map((c) => <Link key={c.id} href={`/category/${c.slug}`}>{c.nameBn}</Link>)}
@@ -31,10 +31,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <footer className="sitefoot">
             <div className="wrap fgrid">
               <div className="fbrand">
-                <Link className="logo" href="/"><i>+</i><span><b>আপনার ফার্মেসি</b><small>স্বাস্থ্য আমাদের অগ্রাধিকার</small></span></Link>
-                <p><b>ঠিকানা:</b> আপনার ঠিকানা, ঢাকা</p>
-                <p><b>মোবাইল:</b> <span className="en">+880 1XXX-XXXXXX</span></p>
-                <p><b>ইমেইল:</b> <span className="en">info@example.com</span></p>
+                <Link className="logo" href="/"><i>+</i><span><b>{store.store_name}</b><small>{store.tagline}</small></span></Link>
+                {store.address && <p><b>ঠিকানা:</b> {store.address}</p>}
+                {store.phone && <p><b>মোবাইল:</b> <span className="en">{store.phone}</span></p>}
+                {store.email && <p><b>ইমেইল:</b> <span className="en">{store.email}</span></p>}
+                {store.hours_text && <p><b>সেবার সময়:</b> {store.hours_text}</p>}
               </div>
               <div><h3>গ্রাহক সেবা</h3><ul>
                 <li><Link href="/">প্রশ্নোত্তর (FAQ)</Link></li><li><Link href="/">অর্ডার রিকোয়েস্ট</Link></li>
@@ -46,7 +47,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </ul></div>
               <div><h3>পেমেন্ট মাধ্যম</h3><p className="paychips en"><span>COD</span><span>bKash</span><span>Nagad</span><span>Card</span></p></div>
             </div>
-            <div className="fbar"><div className="wrap">© {new Date().getFullYear()} আপনার ফার্মেসি। ড্রাগ লাইসেন্স নং: DGDA-XXXX · রেজিস্টার্ড ফার্মাসিস্ট: নাম ও রেজিস্ট্রেশন নং। প্রেসক্রিপশন ছাড়া প্রেসক্রিপশন-ঔষধ বিক্রি হয় না।</div></div>
+            <div className="fbar"><div className="wrap">© {new Date().getFullYear()} {store.store_name}। {store.drug_license && `ড্রাগ লাইসেন্স নং: ${store.drug_license}`}{store.pharmacist_name && ` · রেজিস্টার্ড ফার্মাসিস্ট: ${store.pharmacist_name}${store.pharmacist_reg ? ` (${store.pharmacist_reg})` : ''}`}। প্রেসক্রিপশন ছাড়া প্রেসক্রিপশন-ঔষধ বিক্রি হয় না।</div></div>
           </footer>
           <FloatingCart />
         </CartProvider>

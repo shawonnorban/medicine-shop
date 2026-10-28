@@ -26,3 +26,16 @@ export async function api<T>(path: string, revalidate = 60): Promise<T | null> {
 
 export const taka = (n: number) => '৳' + n.toLocaleString('en-US', { maximumFractionDigits: 2 });
 export const savePct = (price: number, mrp: number) => (mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0);
+
+export type Zone = { code: string; nameBn: string; fee: number; freeOver: number | null; eta: string | null };
+export type PaymentOption = { code: string; nameBn: string; instructions: string | null };
+export type StoreConfig = { store: Record<string, string>; zones: Zone[]; payments: PaymentOption[] };
+
+const FALLBACK: StoreConfig = {
+  store: { store_name: 'আপনার ফার্মেসি', tagline: '', phone: '', address: '', email: '', drug_license: '', pharmacist_name: '', pharmacist_reg: '', announcement: '', whatsapp: '', facebook_url: '', hours_text: '' },
+  zones: [], payments: [],
+};
+/** Store info and options come from the admin settings; fall back to blanks so a brief API outage never breaks page rendering. */
+export async function getConfig(): Promise<StoreConfig> {
+  try { return (await api<StoreConfig>('/v1/config', 30)) ?? FALLBACK; } catch { return FALLBACK; }
+}

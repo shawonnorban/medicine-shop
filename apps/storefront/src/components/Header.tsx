@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useCart } from '@/lib/cart';
-import { PUBLIC_API_URL } from '@/lib/api';
+import { PUBLIC_API_URL, type StoreConfig } from '@/lib/api';
 
 type Sug = { slug: string; name: string; strength: string | null; dosageForm: string | null; generic: string | null };
 
@@ -48,16 +48,16 @@ function SearchBox() {
   );
 }
 
-export function Header() {
+export function Header({ store }: { store: StoreConfig['store'] }) {
   const cart = useCart();
   return (
     <>
       <div className="topbar"><div className="wrap">
-        <div><span>🚚 সারা বাংলাদেশে হোম ডেলিভারি</span><span>🛡 ১০০% অথেনটিক পণ্য</span></div>
-        <div><span className="en">📞 +880 1XXX-XXXXXX</span><Link href="/track">অর্ডার ট্র্যাক</Link></div>
+        <div>{store.announcement && <span>🚚 {store.announcement}</span>}<span>🛡 ১০০% অথেনটিক পণ্য</span></div>
+        <div>{store.phone && <span className="en">📞 {store.phone}</span>}<Link href="/track">অর্ডার ট্র্যাক</Link></div>
       </div></div>
       <header className="site"><div className="wrap">
-        <Link className="logo" href="/"><i>+</i><span><b>আপনার ফার্মেসি</b><small>স্বাস্থ্য আমাদের অগ্রাধিকার</small></span></Link>
+        <Link className="logo" href="/"><i>+</i><span><b>{store.store_name}</b><small>{store.tagline}</small></span></Link>
         <SearchBox />
         <div className="hactions">
           <Link className="rx-btn" href="/prescription">📄 প্রেসক্রিপশন আপলোড</Link>

@@ -1,18 +1,19 @@
 'use client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useCart } from '@/lib/cart';
-import { taka } from '@/lib/api';
+import { PUBLIC_API_URL, taka, type StoreConfig, type Zone } from '@/lib/api';
 import { errText, post } from '@/lib/orders';
-
-const FEE = { dhaka: 60, outside: 120 };
-const FREE_OVER = 1500;
 
 export default function Checkout() {
   const cart = useCart();
   const router = useRouter();
-  const [f, setF] = useState({ name: '', phone: '', address: '', zone: 'dhaka' as 'dhaka' | 'outside', note: '' });
+  const [f, setF] = useState({ name: '', phone: '', address: '', zone: '', note: '' });
+  const [cfg, setCfg] = useState<StoreConfig | null>(null);
+  useEffect(() => {
+    fetch(`${PUBLIC_API_URL}/v1/config`).then((r) => r.json()).then((c: StoreConfig) => { setCfg(c); setF((x) => ({ ...x, zone: x.zone || c.zones[0]?.code || '' })); }).catch(() => setErr('সেটিংস লোড হয়নি, পেজ রিফ্রেশ করুন'));
+  }, []);
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
   const [token, setToken] = useState('');
@@ -20,7 +21,8 @@ export default function Checkout() {
   const [err, setErr] = useState('');
   const [devCode, setDevCode] = useState('');
 
-  const fee = cart.total >= FREE_OVER ? 0 : FEE[f.zone];
+  const zone: Zone | undefined = cfg?.zones.find((z) => z.code === f.zone);
+  const fee = !zone ? 0 : zone.freeOver != null && cart.total >= zone.freeOver ? 0 : zone.fee;
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setF({ ...f, [k]: e.target.value });
     if (k === 'phone') { setToken(''); setSent(false); }
@@ -81,16 +83,16 @@ export default function Checkout() {
           {devCode && !token && <small className="muted">ডেভ মোড: আপনার কোড {devCode}</small>}
           <label htmlFor="zone">এলাকা</label>
           <select id="zone" value={f.zone} onChange={set('zone')}>
-            <option value="dhaka">ঢাকার ভেতরে (৳{FEE.dhaka})</option>
-            <option value="outside">ঢাকার বাইরে (৳{FEE.outside})</option>
+            {cfg?.zones.map((z) => <option key={z.code} value={z.code}>{z.nameBn} (৳{z.fee}{z.eta ? ` · ${z.eta}` : ''})</option>)}
           </select>
           <label htmlFor="address">পূর্ণ ঠিকানা</label>
           <textarea id="address" required minLength={8} rows={3} value={f.address} onChange={set('address')} autoComplete="street-address" />
           <label htmlFor="note">নোট (ঐচ্ছিক)</label>
           <input id="note" value={f.note} onChange={set('note')} maxLength={300} />
           <h3 style={{ marginTop: 18 }}>পেমেন্ট</h3>
-          <label className="radio"><input type="radio" checked readOnly /> ক্যাশ অন ডেলিভারি</label>
-          <small className="muted">bKash ও Nagad শীঘ্রই আসছে।</small>
+          {cfg?.payments.map((p) => (
+            <div key={p.code}><label className="radio"><input type="radio" checked readOnly /> {p.nameBn}</label>{p.instructions && <small className="muted">{p.instructions}</small>}</div>
+          ))}
         </div>
 
         <aside className="co-box">
@@ -100,10 +102,10 @@ export default function Checkout() {
           ))}
           <div className="sumline"><span>সাবটোটাল</span><span className="en">{taka(cart.total)}</span></div>
           <div className="sumline"><span>ডেলিভারি চার্জ</span><span className="en">{fee ? taka(fee) : 'ফ্রি'}</span></div>
-          {fee > 0 && <small className="muted">৳{FREE_OVER}+ অর্ডারে ডেলিভারি ফ্রি</small>}
+          {fee > 0 && zone?.freeOver != null && <small className="muted">৳{zone.freeOver}+ অর্ডারে ডেলিভারি ফ্রি</small>}
           <div className="sumline total"><span>মোট</span><b className="en">{taka(cart.total + fee)}</b></div>
           {err && <p role="alert" className="err">{err}</p>}
-          <button className="cta" type="submit" disabled={busy || !token} style={{ width: '100%', justifyContent: 'center', borderRadius: 10 }}>
+          <button className="cta" type="submit" disabled={busy || !token || !zone} style={{ width: '100%', justifyContent: 'center', borderRadius: 10 }}>
             {busy ? 'অপেক্ষা করুন…' : 'অর্ডার নিশ্চিত করুন'}
           </button>
           {!token && <small className="muted">অর্ডারের আগে মোবাইল নম্বর ভেরিফাই করুন।</small>}

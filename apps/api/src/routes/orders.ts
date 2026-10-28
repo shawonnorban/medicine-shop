@@ -14,7 +14,7 @@ const orderBody = z.object({
   name: z.string().trim().min(2).max(80),
   phone,
   address: z.string().trim().min(8).max(300),
-  zone: z.enum(['dhaka', 'outside']),
+  zone: z.string().min(1).max(40),
   note: z.string().trim().max(300).optional(),
   items: z.array(z.object({ variantId: z.number().int().positive(), qty: z.number().int().min(1).max(50) })).min(1).max(40),
 });
