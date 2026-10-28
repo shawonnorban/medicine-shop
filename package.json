@@ -1,0 +1,13 @@
+{
+  "name": "medicine-shop",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @medshop/api dev",
+    "dev:web": "pnpm --filter @medshop/storefront dev",
+    "db:migrate": "pnpm --filter @medshop/api db:migrate",
+    "db:seed": "pnpm --filter @medshop/api db:seed",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
