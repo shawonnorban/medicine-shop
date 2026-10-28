@@ -1,3 +1,5 @@
+import { basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { sql } from './db/client.js';
@@ -35,7 +37,10 @@ export function buildServer() {
   return app;
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()!)) {
+// Start listening only when this file is the program being run (not when tests import buildServer).
+// basename() understands both / and \\ path separators, so this also works on Windows.
+const isMain = !!process.argv[1] && basename(fileURLToPath(import.meta.url)) === basename(process.argv[1]);
+if (isMain) {
   const port = Number(process.env.API_PORT ?? 4000);
   buildServer().listen({ port, host: '0.0.0.0' }).catch((e) => {
     console.error(e);
