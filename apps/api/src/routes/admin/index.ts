@@ -4,6 +4,7 @@ import { settingsRoutes } from './settings.js';
 import { catalogAdminRoutes } from './catalog.js';
 import { staffRoutes } from './staff.js';
 import { adminOrderRoutes } from './orders.js';
+import { statsRoutes } from './stats.js';
 import { ZodError } from 'zod';
 
 export async function adminRoutes(app: FastifyInstance) {
@@ -20,4 +21,5 @@ export async function adminRoutes(app: FastifyInstance) {
   await app.register(catalogAdminRoutes);
   await app.register(staffRoutes);
   await app.register(adminOrderRoutes);
+  await app.register(statsRoutes);
 }

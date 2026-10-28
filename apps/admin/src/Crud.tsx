@@ -1,35 +1,36 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api';
+import { useT, type Key } from './i18n';
+import { Icon, useErr } from './ui';
 
 export type Field = {
-  key: string; label: string; type?: 'text' | 'number' | 'bool' | 'select' | 'password';
-  options?: [string, string][]; required?: boolean; createOnly?: boolean; nullable?: boolean; hint?: string; list?: boolean;
-  render?: (v: unknown, row: Row) => React.ReactNode;
+  key: string; label: Key; type?: 'text' | 'number' | 'bool' | 'select' | 'password';
+  options?: [string, Key][]; required?: boolean; createOnly?: boolean; nullable?: boolean; hint?: Key; list?: boolean; mono?: boolean;
 };
 export type Row = Record<string, any>;
 
 type Props = {
-  title: string; path: string; fields: Field[]; idKey?: string; canCreate?: boolean; canDelete?: boolean;
-  defaults?: Row; note?: string; addLabel?: string;
+  title: Key; path: string; fields: Field[]; idKey?: string; canCreate?: boolean; canDelete?: boolean;
+  defaults?: Row; note?: Key; addLabel?: Key;
 };
 
-/** One table + form that covers add, edit and delete for a settings list. */
-export function Crud({ title, path, fields, idKey = 'id', canCreate = true, canDelete = true, defaults = {}, note, addLabel = 'যোগ করুন' }: Props) {
+/** One compact table + modal form: add, edit and delete for a settings list. */
+export function Crud({ title, path, fields, idKey = 'id', canCreate = true, canDelete = true, defaults = {}, note, addLabel = 'common.add' }: Props) {
+  const { t } = useT();
+  const errText = useErr();
   const [rows, setRows] = useState<Row[]>([]);
   const [edit, setEdit] = useState<Row | 'new' | null>(null);
   const [form, setForm] = useState<Row>({});
+  const [q, setQ] = useState('');
   const [err, setErr] = useState('');
-  const [msg, setMsg] = useState('');
+  const [flash, setFlash] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(() => api<Row[]>('GET', path).then(setRows).catch((e) => setErr(e.message)), [path]);
+  const load = useCallback(() => api<Row[]>('GET', path).then(setRows).catch((e) => setErr(errText(e))), [path]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!flash) return; const id = setTimeout(() => setFlash(''), 2500); return () => clearTimeout(id); }, [flash]);
 
-  function open(row: Row | 'new') {
-    setErr(''); setMsg('');
-    setEdit(row);
-    setForm(row === 'new' ? { ...defaults } : { ...row, password: '' });
-  }
+  function open(row: Row | 'new') { setErr(''); setEdit(row); setForm(row === 'new' ? { ...defaults } : { ...row, password: '' }); }
 
   function payload() {
     const out: Row = {};
@@ -45,81 +46,95 @@ export function Crud({ title, path, fields, idKey = 'id', canCreate = true, canD
   }
 
   async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setErr(''); setBusy(true);
+    e.preventDefault(); setErr(''); setBusy(true);
     try {
-      if (edit === 'new') await api('POST', path, payload());
-      else await api('PUT', `${path}/${(edit as Row)[idKey]}`, payload());
-      setEdit(null); setMsg('সংরক্ষিত হয়েছে'); await load();
-    } catch (x) { setErr((x as Error).message); }
+      if (edit === 'new') await api('POST', path, payload()); else await api('PUT', `${path}/${(edit as Row)[idKey]}`, payload());
+      setEdit(null); setFlash(t('common.saved')); await load();
+    } catch (x) { setErr(errText(x)); }
     setBusy(false);
   }
 
   async function remove(row: Row) {
-    if (!window.confirm('মুছে ফেলতে চান?')) return;
-    setErr(''); setMsg('');
-    try { await api('DELETE', `${path}/${row[idKey]}`); setMsg('মুছে ফেলা হয়েছে'); await load(); }
-    catch (x) { setErr((x as Error).message); }
+    if (!window.confirm(t('common.confirmDelete'))) return;
+    setErr('');
+    try { await api('DELETE', `${path}/${row[idKey]}`); setFlash(t('common.deleted')); await load(); } catch (x) { setErr(errText(x)); }
   }
 
   const cols = fields.filter((f) => f.list !== false && f.type !== 'password');
-  const show = (f: Field, row: Row) => {
+  const shown = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return s ? rows.filter((r) => cols.some((f) => String(r[f.key] ?? '').toLowerCase().includes(s))) : rows;
+  }, [rows, q]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const cell = (f: Field, row: Row) => {
     const v = row[f.key];
-    if (f.render) return f.render(v, row);
-    if (f.type === 'bool') return v ? <span className="chip ok">চালু</span> : <span className="chip off">বন্ধ</span>;
-    if (f.type === 'select') return f.options?.find(([k]) => k === v)?.[1] ?? String(v);
-    return v == null || v === '' ? '—' : String(v);
+    if (f.type === 'bool') return <span className={`pill ${v ? 'ok' : 'mute'}`}>{v ? t('common.on') : t('common.off')}</span>;
+    if (f.type === 'select') { const o = f.options?.find(([k]) => k === v); return o ? t(o[1]) : String(v); }
+    if (v == null || v === '') return <span className="dim">—</span>;
+    return f.mono || f.type === 'number' ? <span className="num">{String(v)}</span> : String(v);
   };
 
   return (
     <section>
-      <div className="bar"><h2>{title}</h2>{canCreate && <button className="btn" onClick={() => open('new')}>＋ {addLabel}</button>}</div>
-      {note && <p className="muted">{note}</p>}
-      {msg && <p className="okmsg" role="status">{msg}</p>}
-      {err && !edit && <p className="errmsg" role="alert">{err}</p>}
-      <div className="tablewrap"><table>
-        <thead><tr>{cols.map((f) => <th key={f.key}>{f.label}</th>)}<th /></tr></thead>
+      <header className="pagehead">
+        <div><h1>{t(title)}</h1>{note && <p className="sub">{t(note)}</p>}</div>
+        <div className="tools">
+          <label className="searchbox"><Icon name="search" size={13} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('common.search')} aria-label={t('common.search')} /></label>
+          {canCreate && <button className="btn primary" onClick={() => open('new')}><Icon name="plus" size={13} />{t(addLabel)}</button>}
+        </div>
+      </header>
+      {flash && <div className="toast" role="status">{flash}</div>}
+      {err && !edit && <div className="notice err" role="alert">{err}</div>}
+
+      <div className="panel"><table className="grid">
+        <thead><tr>{cols.map((f) => <th key={f.key}>{t(f.label)}</th>)}<th className="act" /></tr></thead>
         <tbody>
-          {rows.map((r) => (
+          {shown.map((r) => (
             <tr key={r[idKey]}>
-              {cols.map((f) => <td key={f.key}>{show(f, r)}</td>)}
-              <td className="actions"><button className="link" onClick={() => open(r)}>এডিট</button>{canDelete && <button className="link danger" onClick={() => remove(r)}>মুছুন</button>}</td>
+              {cols.map((f) => <td key={f.key}>{cell(f, r)}</td>)}
+              <td className="act">
+                <button className="icon" title={t('common.edit')} aria-label={t('common.edit')} onClick={() => open(r)}><Icon name="edit" size={13} /></button>
+                {canDelete && <button className="icon danger" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => remove(r)}><Icon name="trash" size={13} /></button>}
+              </td>
             </tr>
           ))}
-          {!rows.length && <tr><td colSpan={cols.length + 1} className="muted">কিছু নেই</td></tr>}
+          {!shown.length && <tr><td colSpan={cols.length + 1} className="empty">{t('common.empty')}</td></tr>}
         </tbody>
-      </table></div>
+      </table><footer className="tfoot">{shown.length} {t('common.rows')}</footer></div>
 
       {edit && (
-        <div className="modal" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
-          <form className="card" onSubmit={save}>
-            <h3>{edit === 'new' ? addLabel : 'এডিট'}</h3>
-            {fields.map((f) => {
-              const locked = f.createOnly && edit !== 'new';
-              const id = `f-${f.key}`;
-              return (
-                <div key={f.key} className="field">
-                  {f.type === 'bool' ? (
-                    <label className="check"><input id={id} type="checkbox" checked={!!form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.checked })} /> {f.label}</label>
-                  ) : (
-                    <>
-                      <label htmlFor={id}>{f.label}{f.required && ' *'}</label>
-                      {f.type === 'select' ? (
-                        <select id={id} value={form[f.key] ?? ''} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}>{f.options!.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-                      ) : (
-                        <input id={id} type={f.type === 'number' ? 'number' : f.type === 'password' ? 'password' : 'text'} step={f.type === 'number' ? 'any' : undefined}
-                               required={f.required && !(f.type === 'password' && edit !== 'new')} disabled={locked} autoComplete={f.type === 'password' ? 'new-password' : 'off'}
-                               value={form[f.key] ?? ''} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                               placeholder={f.type === 'password' && edit !== 'new' ? 'বদলাতে চাইলে লিখুন' : undefined} />
-                      )}
-                    </>
-                  )}
-                  {f.hint && <small className="muted">{f.hint}</small>}
-                </div>
-              );
-            })}
-            {err && <p className="errmsg" role="alert">{err}</p>}
-            <div className="row"><button className="btn" disabled={busy}>{busy ? '…' : 'সংরক্ষণ'}</button><button type="button" className="btn ghost" onClick={() => setEdit(null)}>বাতিল</button></div>
+        <div className="overlay" role="dialog" aria-modal="true" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
+          <form className="dialog" onSubmit={save}>
+            <div className="dhead"><h2>{edit === 'new' ? t(addLabel) : t('common.edit')}</h2><button type="button" className="icon" aria-label={t('common.close')} onClick={() => setEdit(null)}><Icon name="x" size={14} /></button></div>
+            <div className="dbody">
+              {fields.map((f) => {
+                const locked = f.createOnly && edit !== 'new';
+                const id = `f-${f.key}`;
+                if (f.type === 'bool') return (
+                  <div key={f.key} className="frow switchrow">
+                    <label htmlFor={id}>{t(f.label)}</label>
+                    <input id={id} className="switch" type="checkbox" role="switch" checked={!!form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.checked })} />
+                    {f.hint && <small>{t(f.hint)}</small>}
+                  </div>
+                );
+                return (
+                  <div key={f.key} className="frow">
+                    <label htmlFor={id}>{t(f.label)}{f.required && !(f.type === 'password' && edit !== 'new') && <i>*</i>}</label>
+                    {f.type === 'select' ? (
+                      <select id={id} value={form[f.key] ?? ''} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}>{f.options!.map(([k, l]) => <option key={k} value={k}>{t(l)}</option>)}</select>
+                    ) : (
+                      <input id={id} type={f.type === 'number' ? 'number' : f.type === 'password' ? 'password' : 'text'} step={f.type === 'number' ? 'any' : undefined}
+                             required={f.required && !(f.type === 'password' && edit !== 'new')} disabled={locked} autoComplete={f.type === 'password' ? 'new-password' : 'off'}
+                             value={form[f.key] ?? ''} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                             placeholder={f.type === 'password' && edit !== 'new' ? t('staff.password.keep') : undefined} />
+                    )}
+                    {f.hint && <small>{t(f.hint)}</small>}
+                  </div>
+                );
+              })}
+              {err && <div className="notice err" role="alert">{err}</div>}
+            </div>
+            <div className="dfoot"><button type="button" className="btn" onClick={() => setEdit(null)}>{t('common.cancel')}</button><button className="btn primary" disabled={busy}>{t('common.save')}</button></div>
           </form>
         </div>
       )}

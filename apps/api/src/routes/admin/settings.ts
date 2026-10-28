@@ -70,9 +70,9 @@ export async function settingsRoutes(app: FastifyInstance) {
     const [zone] = await sql`SELECT code FROM delivery_zones WHERE id = ${id}`;
     if (!zone) return reply.status(404).send({ error: 'not_found' });
     const [{ n }] = await sql`SELECT count(*)::int AS n FROM orders WHERE zone = ${zone.code}`;
-    if (n > 0) return reply.status(409).send({ error: 'in_use', message: `${n}টি অর্ডারে ব্যবহৃত, মুছতে না পারলে নিষ্ক্রিয় করুন` });
+    if (n > 0) return reply.status(409).send({ error: 'in_use', count: n });
     const [{ active }] = await sql`SELECT count(*)::int AS active FROM delivery_zones WHERE is_active AND id <> ${id}`;
-    if (active === 0) return reply.status(409).send({ error: 'last_zone', message: 'অন্তত একটি সক্রিয় এলাকা থাকতে হবে' });
+    if (active === 0) return reply.status(409).send({ error: 'last_zone' });
     await sql`DELETE FROM delivery_zones WHERE id = ${id}`;
     await audit(req, 'delivery_zone.delete', 'delivery_zone', id, zone);
     return { ok: true };
@@ -85,10 +85,10 @@ export async function settingsRoutes(app: FastifyInstance) {
     const { code } = z.object({ code: z.enum(['cod', 'bkash', 'nagad']) }).parse(req.params);
     const b = z.object({ nameBn: z.string().trim().min(1).max(60), isEnabled: z.boolean(), instructions: z.string().trim().max(500).nullable() }).parse(req.body);
     // bKash/Nagad payment collection is not built yet; enabling them now would let customers order without paying.
-    if (b.isEnabled && code !== 'cod') return reply.status(409).send({ error: 'gateway_not_available', message: 'bKash/Nagad গেটওয়ে এখনো যুক্ত হয়নি' });
+    if (b.isEnabled && code !== 'cod') return reply.status(409).send({ error: 'gateway_not_available' });
     if (!b.isEnabled && code === 'cod') {
       const [{ n }] = await sql`SELECT count(*)::int AS n FROM payment_methods WHERE is_enabled AND code <> 'cod'`;
-      if (n === 0) return reply.status(409).send({ error: 'last_method', message: 'অন্তত একটি পেমেন্ট পদ্ধতি চালু থাকতে হবে' });
+      if (n === 0) return reply.status(409).send({ error: 'last_method' });
     }
     await sql`UPDATE payment_methods SET name_bn = ${b.nameBn}, is_enabled = ${b.isEnabled}, instructions = ${b.instructions} WHERE code = ${code}`;
     await audit(req, 'payment_method.update', 'payment_method', code, b);

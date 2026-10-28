@@ -27,7 +27,7 @@ export async function staffRoutes(app: FastifyInstance) {
     const { id } = idParam.parse(req.params);
     const b = z.object({ name: z.string().trim().min(2).max(80), role, isActive: z.boolean(), password: password.optional() }).parse(req.body);
     // never let the last active admin be demoted or deactivated (lock-out protection)
-    if (id === req.staff!.id && (b.role !== 'admin' || !b.isActive)) return reply.status(409).send({ error: 'self_lockout', message: 'নিজের অ্যাডমিন অ্যাক্সেস বন্ধ করা যাবে না' });
+    if (id === req.staff!.id && (b.role !== 'admin' || !b.isActive)) return reply.status(409).send({ error: 'self_lockout' });
     const r = await sql`UPDATE staff SET name = ${b.name}, role = ${b.role}, is_active = ${b.isActive} WHERE id = ${id} RETURNING id`;
     if (!r.length) return reply.status(404).send({ error: 'not_found' });
     if (b.password) await sql`UPDATE staff SET password_hash = ${await hashPassword(b.password)} WHERE id = ${id}`;
@@ -38,7 +38,7 @@ export async function staffRoutes(app: FastifyInstance) {
 
   app.delete('/staff/:id', admin, async (req, reply) => {
     const { id } = idParam.parse(req.params);
-    if (id === req.staff!.id) return reply.status(409).send({ error: 'self_delete', message: 'নিজেকে মুছা যাবে না' });
+    if (id === req.staff!.id) return reply.status(409).send({ error: 'self_delete' });
     const r = await sql`DELETE FROM staff WHERE id = ${id} RETURNING email`;
     if (!r.length) return reply.status(404).send({ error: 'not_found' });
     await audit(req, 'staff.delete', 'staff', id, { email: r[0].email });

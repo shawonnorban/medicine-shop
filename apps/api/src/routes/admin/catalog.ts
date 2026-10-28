@@ -37,7 +37,7 @@ export async function catalogAdminRoutes(app: FastifyInstance) {
   app.delete('/categories/:id', admin, async (req, reply) => {
     const { id } = idParam.parse(req.params);
     const [{ n }] = await sql`SELECT count(*)::int AS n FROM products WHERE category_id = ${id}`;
-    if (n > 0) return reply.status(409).send({ error: 'in_use', message: `${n}টি পণ্য এই ক্যাটাগরিতে আছে। আগে পণ্যগুলো সরান` });
+    if (n > 0) return reply.status(409).send({ error: 'in_use', count: n });
     const r = await sql`DELETE FROM categories WHERE id = ${id} RETURNING id`;
     if (!r.length) return reply.status(404).send({ error: 'not_found' });
     await audit(req, 'category.delete', 'category', id);
@@ -69,7 +69,7 @@ export async function catalogAdminRoutes(app: FastifyInstance) {
   app.delete('/companies/:id', admin, async (req, reply) => {
     const { id } = idParam.parse(req.params);
     const [{ n }] = await sql`SELECT count(*)::int AS n FROM products WHERE company_id = ${id}`;
-    if (n > 0) return reply.status(409).send({ error: 'in_use', message: `${n}টি পণ্য এই কোম্পানির` });
+    if (n > 0) return reply.status(409).send({ error: 'in_use', count: n });
     const r = await sql`DELETE FROM companies WHERE id = ${id} RETURNING id`;
     if (!r.length) return reply.status(404).send({ error: 'not_found' });
     await audit(req, 'company.delete', 'company', id);

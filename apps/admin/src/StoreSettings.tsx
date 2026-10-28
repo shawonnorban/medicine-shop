@@ -1,38 +1,37 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { useT, type Key } from './i18n';
+import { useErr } from './ui';
 
-const FIELDS: [string, string, string?][] = [
-  ['store_name', 'দোকানের নাম'], ['tagline', 'ট্যাগলাইন'], ['phone', 'ফোন নম্বর'], ['whatsapp', 'WhatsApp নম্বর'], ['email', 'ইমেইল'],
-  ['address', 'ঠিকানা'], ['hours_text', 'সেবার সময়'], ['drug_license', 'ড্রাগ লাইসেন্স নম্বর'], ['pharmacist_name', 'ফার্মাসিস্টের নাম'],
-  ['pharmacist_reg', 'ফার্মাসিস্ট রেজিস্ট্রেশন নম্বর'], ['facebook_url', 'Facebook পেজ লিংক'], ['announcement', 'টপ বারের ঘোষণা', 'ওয়েবসাইটের একদম উপরে দেখাবে'],
-];
+const FIELDS = ['store_name', 'tagline', 'phone', 'whatsapp', 'email', 'address', 'hours_text', 'drug_license', 'pharmacist_name', 'pharmacist_reg', 'facebook_url', 'announcement'] as const;
 
 export function StoreSettings() {
+  const { t } = useT();
+  const errText = useErr();
   const [v, setV] = useState<Record<string, string>>({});
-  const [msg, setMsg] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
-  useEffect(() => { api<Record<string, string>>('GET', '/settings/store').then(setV).catch((e) => setErr(e.message)); }, []);
+  const [flash, setFlash] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  useEffect(() => { api<Record<string, string>>('GET', '/settings/store').then(setV).catch((e) => setErr(errText(e))); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!flash) return; const id = setTimeout(() => setFlash(''), 2500); return () => clearTimeout(id); }, [flash]);
 
   async function save(e: React.FormEvent) {
-    e.preventDefault(); setErr(''); setMsg(''); setBusy(true);
-    try { await api('PUT', '/settings/store', Object.fromEntries(FIELDS.map(([k]) => [k, v[k] ?? '']))); setMsg('সংরক্ষিত হয়েছে। ওয়েবসাইটে আসতে সর্বোচ্চ ১ মিনিট লাগতে পারে।'); }
-    catch (x) { setErr((x as Error).message); }
+    e.preventDefault(); setErr(''); setBusy(true);
+    try { await api('PUT', '/settings/store', Object.fromEntries(FIELDS.map((k) => [k, v[k] ?? '']))); setFlash(t('common.saved')); } catch (x) { setErr(errText(x)); }
     setBusy(false);
   }
   return (
     <section>
-      <div className="bar"><h2>দোকানের তথ্য</h2></div>
-      <form className="card wide" onSubmit={save}>
-        <div className="grid2">
-          {FIELDS.map(([k, label, hint]) => (
-            <div className="field" key={k}>
-              <label htmlFor={k}>{label}</label>
-              <input id={k} value={v[k] ?? ''} onChange={(e) => setV({ ...v, [k]: e.target.value })} maxLength={300} />
-              {hint && <small className="muted">{hint}</small>}
-            </div>
-          ))}
-        </div>
-        {msg && <p className="okmsg" role="status">{msg}</p>}{err && <p className="errmsg" role="alert">{err}</p>}
-        <button className="btn" disabled={busy}>{busy ? '…' : 'সংরক্ষণ'}</button>
+      <header className="pagehead"><div><h1>{t('store.title')}</h1><p className="sub">{t('store.hint')}</p></div>
+        <div className="tools"><button form="storeform" className="btn primary" disabled={busy}>{t('common.save')}</button></div></header>
+      {flash && <div className="toast" role="status">{flash}</div>}
+      {err && <div className="notice err" role="alert">{err}</div>}
+      <form id="storeform" className="panel formgrid" onSubmit={save}>
+        {FIELDS.map((k) => (
+          <div className="frow" key={k}>
+            <label htmlFor={k}>{t(`store.${k}` as Key)}</label>
+            <input id={k} value={v[k] ?? ''} maxLength={300} onChange={(e) => setV({ ...v, [k]: e.target.value })} />
+            {k === 'announcement' && <small>{t('store.announcement.hint')}</small>}
+          </div>
+        ))}
       </form>
     </section>
   );

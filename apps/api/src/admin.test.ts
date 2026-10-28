@@ -129,3 +129,11 @@ test('orders: status flow enforced, cancel restores stock, COD marked paid on de
   await sql`INSERT INTO stock_movements (batch_id, qty, reason, ref_type) SELECT b.id, 2, 'adjustment', 'test' FROM batches b WHERE b.variant_id = ${v.id} AND b.batch_no = 'B-B'`;
   assert.equal(await stock(), s0);
 });
+
+test('stats: dashboard numbers are available to all staff roles', async () => {
+  const c = await login('t-cashier@test.local');
+  const r = await app.inject({ method: 'GET', url: '/admin/stats', headers: c });
+  assert.equal(r.statusCode, 200);
+  const s = r.json();
+  for (const k of ['pending', 'ordersToday', 'salesToday', 'toShip', 'lowStock', 'expiringBatches']) assert.equal(typeof s[k], 'number', k);
+});
