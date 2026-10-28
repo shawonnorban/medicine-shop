@@ -9,9 +9,10 @@ export type ProductCardData = {
 };
 export type Variant = { id: number; label: string; unit: string; price: number; mrp: number; stock: number; nearestExpiry: string | null };
 export type Alternative = { slug: string; name: string; strength: string | null; company: string | null; price: number; mrp: number; variantLabel: string };
+export type Related = { slug: string; name: string; strength: string | null; imageUrl: string | null; company: string | null; price: number; mrp: number };
 export type ProductDetail = Omit<ProductCardData, 'variantId' | 'variantLabel' | 'unit' | 'price' | 'mrp' | 'stock'> & {
   description: string | null; usage: string | null; warnings: string | null; companySlug: string | null; categoryNameBn: string | null;
-  variants: Variant[]; alternatives: Alternative[];
+  variants: Variant[]; alternatives: Alternative[]; related: Related[];
 };
 export type ProductPage = { items: ProductCardData[]; total: number; page: number; limit: number };
 

@@ -82,7 +82,7 @@ export async function catalogRoutes(app: FastifyInstance) {
   app.get('/products/:slug', async (req, reply) => {
     const { slug } = z.object({ slug: z.string().min(1).max(200) }).parse(req.params);
     const [p] = await sql`
-      SELECT p.id, p.slug, p.name, p.dosage_form AS "dosageForm", p.strength, p.rx, p.image_url AS "imageUrl",
+      SELECT p.id, p.category_id AS "categoryId", p.slug, p.name, p.dosage_form AS "dosageForm", p.strength, p.rx, p.image_url AS "imageUrl",
              p.description, p.usage_info AS usage, p.warnings,
              g.id AS "genericId", g.name AS generic, co.name AS company, co.slug AS "companySlug",
              c.slug AS "categorySlug", c.name_bn AS "categoryNameBn"
@@ -93,7 +93,7 @@ export async function catalogRoutes(app: FastifyInstance) {
       WHERE p.slug = ${slug} AND p.is_active`;
     if (!p) return reply.status(404).send({ error: 'not_found' });
 
-    const [variants, alternatives] = await Promise.all([
+    const [variants, alternatives, related] = await Promise.all([
       sql`
         SELECT v.id, v.label, v.unit, v.price, v.mrp,
                COALESCE(vs.qty, 0) AS stock, to_char(vs.nearest_expiry, 'MM/YYYY') AS "nearestExpiry"
@@ -110,11 +110,19 @@ export async function catalogRoutes(app: FastifyInstance) {
             AND p2.strength IS NOT DISTINCT FROM ${p.strength}
           ORDER BY dv.price LIMIT 8`
         : Promise.resolve([]),
+      // sidebar: other products from the same category
+      sql`
+        SELECT p2.slug, p2.name, p2.strength, p2.image_url AS "imageUrl", co.name AS company, dv.price, dv.mrp
+        FROM products p2
+        JOIN LATERAL (SELECT * FROM product_variants v WHERE v.product_id = p2.id ORDER BY v.sort_order, v.id LIMIT 1) dv ON true
+        LEFT JOIN companies co ON co.id = p2.company_id
+        WHERE p2.category_id = ${p.categoryId} AND p2.id <> ${p.id} AND p2.is_active
+        ORDER BY p2.is_featured DESC, p2.id LIMIT 10`,
     ]);
 
-    const { id: _id, genericId: _g, ...product } = p;
+    const { id: _id, genericId: _g, categoryId: _c, ...product } = p;
     reply.header('cache-control', CACHE);
-    return { ...product, variants, alternatives };
+    return { ...product, variants, alternatives, related };
   });
 
   // Typeahead: prefix matches first, then fuzzy (typo tolerant) via pg_trgm.
