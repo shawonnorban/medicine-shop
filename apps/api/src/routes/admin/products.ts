@@ -54,22 +54,22 @@ export async function productAdminRoutes(app: FastifyInstance) {
   app.get('/products', read, async (req) => {
     const q = z.object({
       q: z.string().trim().max(60).optional(), category: z.coerce.number().int().optional(), rx: z.enum(['otc', 'prescription', 'controlled']).optional(),
-      active: z.enum(['1', '0']).optional(), page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(30),
+      active: z.enum(['1', '0']).optional(), review: z.enum(['1']).optional(), page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(30),
     }).parse(req.query);
     const like = q.q ? `%${q.q.replace(/[%_\\]/g, '\\$&')}%` : null;
     const rows = await sql`
-      SELECT p.id, p.name, p.strength, p.dosage_form AS "dosageForm", p.rx, p.is_active AS "isActive", p.is_featured AS "isFeatured",
+      SELECT p.id, p.name, p.strength, p.dosage_form AS "dosageForm", p.rx, p.is_active AS "isActive", p.is_featured AS "isFeatured", p.needs_review AS "needsReview",
              g.name AS generic, co.name AS company, c.name_en AS category,
              (SELECT count(*)::int FROM product_variants v WHERE v.product_id = p.id) AS variants,
              COALESCE((SELECT SUM(b.qty_on_hand) FROM batches b WHERE b.product_id = p.id AND b.expiry_date >= CURRENT_DATE), 0)::int AS stock, p.base_unit AS "baseUnit",
-             (SELECT min(v.price) FROM product_variants v WHERE v.product_id = p.id) AS price,
+             (SELECT v.price FROM product_variants v WHERE v.product_id = p.id ORDER BY v.sort_order, v.id LIMIT 1) AS price,
              count(*) OVER()::int AS total_rows
       FROM products p
       LEFT JOIN generics g ON g.id = p.generic_id LEFT JOIN companies co ON co.id = p.company_id LEFT JOIN categories c ON c.id = p.category_id
       WHERE true
         ${like ? sql`AND (p.name ILIKE ${like} OR g.name ILIKE ${like} OR EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = p.id AND v.barcode = ${q.q!}))` : sql``}
         ${q.category ? sql`AND p.category_id = ${q.category}` : sql``} ${q.rx ? sql`AND p.rx = ${q.rx}` : sql``}
-        ${q.active ? sql`AND p.is_active = ${q.active === '1'}` : sql``}
+        ${q.active ? sql`AND p.is_active = ${q.active === '1'}` : sql``} ${q.review ? sql`AND p.needs_review` : sql``}
       ORDER BY p.name, p.id LIMIT ${q.limit} OFFSET ${(q.page - 1) * q.limit}`;
     return { items: rows.map(({ total_rows: _t, ...r }) => r), total: rows[0]?.total_rows ?? 0 };
   });
@@ -78,7 +78,7 @@ export async function productAdminRoutes(app: FastifyInstance) {
     const { id } = idParam.parse(req.params);
     const [p] = await sql`
       SELECT p.id, p.name, g.name AS generic, p.company_id AS "companyId", p.category_id AS "categoryId", p.dosage_form AS "dosageForm", p.base_unit AS "baseUnit", p.strength, p.rx,
-             p.description, p.usage_info AS usage, p.warnings, p.image_url AS "imageUrl", p.is_active AS "isActive", p.is_featured AS "isFeatured", p.slug
+             p.description, p.usage_info AS usage, p.warnings, p.image_url AS "imageUrl", p.is_active AS "isActive", p.is_featured AS "isFeatured", p.needs_review AS "needsReview", p.slug
       FROM products p LEFT JOIN generics g ON g.id = p.generic_id WHERE p.id = ${id}`;
     if (!p) return reply.status(404).send({ error: 'not_found' });
     const variants = await sql`
@@ -129,7 +129,7 @@ export async function productAdminRoutes(app: FastifyInstance) {
         await tx`
           UPDATE products SET name = ${b.name}, generic_id = ${genericId}, company_id = ${b.companyId ?? null}, category_id = ${b.categoryId ?? null},
                  dosage_form = ${b.dosageForm ?? null}, base_unit = ${b.baseUnit}, strength = ${b.strength ?? null}, rx = ${b.rx}, description = ${b.description ?? null},
-                 usage_info = ${b.usage ?? null}, warnings = ${b.warnings ?? null}, image_url = ${b.imageUrl ?? null}, is_active = ${b.isActive}, is_featured = ${b.isFeatured}
+                 usage_info = ${b.usage ?? null}, warnings = ${b.warnings ?? null}, image_url = ${b.imageUrl ?? null}, is_active = ${b.isActive}, is_featured = ${b.isFeatured}, needs_review = false   -- a person saved it, so it counts as reviewed
           WHERE id = ${id}`;
         // variants: update the ones with ids, insert new ones, remove the ones dropped (only if never stocked or ordered)
         const keep = b.variants.filter((v) => v.id).map((v) => v.id!);

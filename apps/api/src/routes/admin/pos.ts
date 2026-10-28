@@ -98,36 +98,47 @@ export async function posRoutes(app: FastifyInstance) {
   });
 
   // ---- search (barcode scan or text). Returns medicines with their counter packs.
+  type Row = Record<string, any>;
+  const group = (rows: Row[]) => {
+    const byProduct = new Map<number, any>();
+    for (const r of rows) {
+      let p = byProduct.get(r.productId);
+      if (!p) { p = { productId: r.productId, name: r.name, strength: r.strength, dosageForm: r.dosageForm, baseUnit: r.baseUnit, rx: r.rx, generic: r.generic, company: r.company, units: r.units, nearestExpiry: r.nearestExpiry, matchedVariantId: null, sameStrength: r.sameStrength ?? null, packs: [] }; byProduct.set(r.productId, p); }
+      if (r.isBarcode) p.matchedVariantId = r.variantId;
+      p.packs.push({ variantId: r.variantId, label: r.label, unit: r.unit, pieces: r.pieces, price: Number(r.price), mrp: Number(r.mrp), barcode: r.barcode, available: Math.floor(r.units / r.pieces) });
+    }
+    return [...byProduct.values()];
+  };
+
   app.get('/pos/search', sell, async (req) => {
     const { q } = z.object({ q: z.string().trim().min(1).max(60) }).parse(req.query);
     const like = `%${q.replace(/[%_\\]/g, '\\$&')}%`;
     const rows = await sql`
       SELECT p.id AS "productId", p.name, p.strength, p.dosage_form AS "dosageForm", p.base_unit AS "baseUnit", p.rx, g.name AS generic, co.name AS company,
-             v.id AS "variantId", v.label, v.unit, v.pieces, v.price, v.mrp, v.barcode, v.sort_order AS ord, (v.barcode = ${q}) AS "isBarcode",
+             v.id AS "variantId", v.label, v.unit, v.pieces, v.price, v.mrp, v.barcode, (v.barcode = ${q}) AS "isBarcode",
              COALESCE(ps.qty, 0) AS units, ps.nearest_expiry::text AS "nearestExpiry"
       FROM products p JOIN product_variants v ON v.product_id = p.id AND v.sell_pos
       LEFT JOIN generics g ON g.id = p.generic_id LEFT JOIN companies co ON co.id = p.company_id LEFT JOIN product_stock ps ON ps.product_id = p.id
       WHERE p.is_active AND (p.id IN (SELECT product_id FROM product_variants WHERE barcode = ${q}) OR p.name ILIKE ${like} OR g.name ILIKE ${like})
-      ORDER BY (v.barcode = ${q}) DESC NULLS LAST, (COALESCE(ps.qty, 0) > 0) DESC, p.name, v.sort_order LIMIT 80`;
-    const byProduct = new Map<number, any>();
-    for (const r of rows) {
-      let p = byProduct.get(r.productId);
-      if (!p) { p = { productId: r.productId, name: r.name, strength: r.strength, dosageForm: r.dosageForm, baseUnit: r.baseUnit, rx: r.rx, generic: r.generic, company: r.company, units: r.units, nearestExpiry: r.nearestExpiry, matchedVariantId: null, packs: [] }; byProduct.set(r.productId, p); }
-      if (r.isBarcode) p.matchedVariantId = r.variantId;
-      p.packs.push({ variantId: r.variantId, label: r.label, unit: r.unit, pieces: r.pieces, price: Number(r.price), mrp: Number(r.mrp), barcode: r.barcode, available: Math.floor(r.units / r.pieces) });
-    }
-    return [...byProduct.values()].slice(0, 15);
+      ORDER BY (v.barcode = ${q}) DESC NULLS LAST, (COALESCE(ps.qty, 0) > 0) DESC, p.name, v.sort_order LIMIT 120`;
+    return group(rows).slice(0, 15);
   });
 
-  // same generic, other brands, in stock, cheapest first
+  // Other brands of the same generic that are in stock. Same strength first, then cheaper per piece; other strengths follow.
   app.get('/pos/alternatives/:id', sell, async (req) => {
     const { id } = idParam.parse(req.params);
-    return sql`
-      SELECT p2.id AS "productId", p2.name, p2.strength, co.name AS company, v.id AS "variantId", v.label, v.price, v.pieces, (ps.qty / v.pieces)::int AS available
-      FROM products p JOIN products p2 ON p2.generic_id = p.generic_id AND p2.id <> p.id AND p2.is_active
-      JOIN LATERAL (SELECT * FROM product_variants x WHERE x.product_id = p2.id AND x.sell_pos ORDER BY x.sort_order, x.id LIMIT 1) v ON true
-      JOIN product_stock ps ON ps.product_id = p2.id AND ps.qty >= v.pieces LEFT JOIN companies co ON co.id = p2.company_id
-      WHERE p.id = ${id} AND p.generic_id IS NOT NULL AND p2.strength IS NOT DISTINCT FROM p.strength ORDER BY v.price LIMIT 8`;
+    const rows = await sql`
+      SELECT p2.id AS "productId", p2.name, p2.strength, p2.dosage_form AS "dosageForm", p2.base_unit AS "baseUnit", p2.rx, g.name AS generic, co.name AS company,
+             v.id AS "variantId", v.label, v.unit, v.pieces, v.price, v.mrp, v.barcode, false AS "isBarcode", ps.qty AS units, ps.nearest_expiry::text AS "nearestExpiry",
+             (p2.strength IS NOT DISTINCT FROM p.strength) AS "sameStrength", (v.price / v.pieces) AS per_unit, v.sort_order
+      FROM products p
+      JOIN products p2 ON p2.generic_id = p.generic_id AND p2.id <> p.id AND p2.is_active
+      JOIN product_variants v ON v.product_id = p2.id AND v.sell_pos
+      JOIN product_stock ps ON ps.product_id = p2.id AND ps.qty > 0
+      JOIN generics g ON g.id = p2.generic_id LEFT JOIN companies co ON co.id = p2.company_id
+      WHERE p.id = ${id} AND p.generic_id IS NOT NULL
+      ORDER BY (p2.strength IS NOT DISTINCT FROM p.strength) DESC, (SELECT min(x.price / x.pieces) FROM product_variants x WHERE x.product_id = p2.id AND x.sell_pos), p2.id, v.sort_order LIMIT 80`;
+    return group(rows).slice(0, 12);
   });
 
   // ---- sale

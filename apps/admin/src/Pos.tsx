@@ -7,9 +7,8 @@ import { taka } from './Orders';
 import type { Staff } from './api';
 
 type Pack = { variantId: number; label: string; unit: string; pieces: number; price: number; mrp: number; barcode: string | null; available: number };
-type Found = { productId: number; name: string; strength: string | null; dosageForm: string | null; baseUnit: string; rx: string; generic: string | null; company: string | null; units: number; nearestExpiry: string | null; matchedVariantId: number | null; packs: Pack[] };
-type Line = { productId: number; name: string; strength: string | null; rx: string; baseUnit: string; units: number; nearestExpiry: string | null; packs: Pack[]; variantId: number; qty: number };
-type Alt = { productId: number; name: string; strength: string | null; company: string | null; variantId: number; label: string; price: number; available: number };
+type Found = { productId: number; name: string; strength: string | null; dosageForm: string | null; baseUnit: string; rx: string; generic: string | null; company: string | null; units: number; nearestExpiry: string | null; matchedVariantId: number | null; sameStrength?: boolean | null; packs: Pack[] };
+type Line = { productId: number; name: string; strength: string | null; rx: string; baseUnit: string; generic: string | null; dosageForm: string | null; units: number; nearestExpiry: string | null; packs: Pack[]; variantId: number; qty: number };
 type Shift = { id: number; openedAt: string; openingCash: number };
 type Report = { sales: number; total: number; discount: number; byMethod: Record<string, number>; refunds: number; returns: number; openingCash: number; expectedCash: number };
 type Held = { id: number; label: string | null; payload: { lines: Line[]; discount: Disc; customerPhone: string }; createdAt: string };
@@ -21,6 +20,22 @@ const money = (n: number) => Math.round(n * 100) / 100;
 const daysTo = (d: string) => Math.ceil((new Date(d).getTime() - Date.now()) / 86400000);
 const expText = (d: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '—');
 const packOf = (l: Line) => l.packs.find((p) => p.variantId === l.variantId)!;
+
+function AltCard({ a, ref0, compact, onAdd }: { a: Found; ref0?: { strength: string | null; perUnit?: number }; compact?: boolean; onAdd: (variantId: number) => void }) {
+  const pack = a.packs.find((p) => p.available > 0) ?? a.packs[0];
+  const per = pack.price / pack.pieces;
+  const diff = ref0?.perUnit != null ? money((ref0.perUnit - per) * pack.pieces) : null;   // saving on one pack of this size
+  const d = a.nearestExpiry ? daysTo(a.nearestExpiry) : null;
+  return (
+    <button type="button" className={`altcard ${compact ? 'compact' : ''}`} onClick={() => onAdd(pack.variantId)} disabled={pack.available < 1}>
+      <span className="altname"><b>{a.name} {a.strength}</b>{ref0 && a.strength !== ref0.strength && <span className="pill mute">other strength</span>}</span>
+      <span className="dim small">{a.company ?? '—'}</span>
+      <span className="altrow2"><b className="num">{taka(pack.price)}</b><span className="dim small">{pack.label}</span>
+        {diff !== null && diff > 0 && <span className="pill ok">saves {taka(diff)}</span>}{diff !== null && diff < 0 && <span className="pill warn">+{taka(-diff)}</span>}</span>
+      <span className={`small ${d !== null && d <= WARN_DAYS ? 'warntext' : 'dim'}`}>{pack.available} left{a.nearestExpiry ? ` · exp ${expText(a.nearestExpiry)}` : ''}</span>
+    </button>
+  );
+}
 
 export function Pos({ staff, onExit }: { staff: Staff; onExit: () => void }) {
   const errText = useErr();
@@ -36,7 +51,10 @@ export function Pos({ staff, onExit }: { staff: Staff; onExit: () => void }) {
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [heldOpen, setHeldOpen] = useState(false); const [held, setHeld] = useState<Held[]>([]);
   const [histOpen, setHistOpen] = useState(false); const [endOpen, setEndOpen] = useState(false);
-  const [alts, setAlts] = useState<{ for: string; items: Alt[] } | null>(null);
+  const [focus, setFocus] = useState<{ productId: number; name: string; generic: string | null; strength: string | null; perUnit: number } | null>(null);
+  const altCache = useRef(new Map<number, Found[]>());
+  const [alts, setAlts] = useState<Found[]>([]);
+  const [hiAlts, setHiAlts] = useState<Found[] | null>([]);
   const [opening, setOpening] = useState('0'); const [counted, setCounted] = useState(''); const [closed, setClosed] = useState<{ difference: number; report: Report } | null>(null);
   const [autoPrint, setAutoPrint] = useState(() => { try { return localStorage.getItem('pos.autoprint') === '1'; } catch { return false; } });
   const searchRef = useRef<HTMLInputElement>(null); const discRef = useRef<HTMLInputElement>(null);
@@ -71,9 +89,10 @@ export function Pos({ staff, onExit }: { staff: Staff; onExit: () => void }) {
     setLines((ls) => {
       const hit = ls.find((l) => l.variantId === pack.variantId);
       if (hit) return ls.map((l) => (l === hit ? { ...l, qty: l.qty + 1 } : l));
-      return [...ls, { productId: f.productId, name: f.name, strength: f.strength, rx: f.rx, baseUnit: f.baseUnit, units: f.units, nearestExpiry: f.nearestExpiry, packs: f.packs, variantId: pack.variantId, qty: 1 }];
+      return [...ls, { productId: f.productId, name: f.name, strength: f.strength, rx: f.rx, baseUnit: f.baseUnit, generic: 'generic' in f ? f.generic : null, dosageForm: 'dosageForm' in f ? f.dosageForm : null, units: f.units, nearestExpiry: f.nearestExpiry, packs: f.packs, variantId: pack.variantId, qty: 1 }];
     });
-    setQ(''); setFound([]); setAlts(null); searchRef.current?.focus();
+    setFocus({ productId: f.productId, name: f.name, generic: 'generic' in f ? f.generic : null, strength: f.strength, perUnit: pack.price / pack.pieces });
+    setQ(''); setFound([]); searchRef.current?.focus();
   }
   const setLine = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const removeLine = (i: number) => setLines((ls) => ls.filter((_, j) => j !== i));
@@ -95,10 +114,26 @@ export function Pos({ staff, onExit }: { staff: Staff; onExit: () => void }) {
     else if (e.key === 'Escape') { setQ(''); setFound([]); }
   }
 
-  async function showAlts(f: { productId: number; name: string }) {
-    const items = await api<Alt[]>('GET', `/pos/alternatives/${f.productId}`).catch(() => []);
-    setAlts({ for: f.name, items });
-  }
+  /** Same-generic suggestions, cached per product so moving the highlight does not hammer the server. */
+  const loadAlts = useCallback(async (productId: number) => {
+    const hit = altCache.current.get(productId);
+    if (hit) return hit;
+    const r = await api<Found[]>('GET', `/pos/alternatives/${productId}`).catch(() => [] as Found[]);
+    altCache.current.set(productId, r);
+    return r;
+  }, []);
+  useEffect(() => { // suggestions for the medicine in focus on the bill
+    if (!focus) { setAlts([]); return; }
+    let live = true; loadAlts(focus.productId).then((r) => { if (live) setAlts(r); });
+    return () => { live = false; };
+  }, [focus, loadAlts]);
+  useEffect(() => { // suggestions for the highlighted search result
+    const f = found[hi];
+    if (!f || !q.trim()) { setHiAlts([]); return; }
+    setHiAlts(altCache.current.get(f.productId) ?? null);   // null = still loading
+    let live = true; const id = setTimeout(() => loadAlts(f.productId).then((r) => { if (live) setHiAlts(r); }), 120);
+    return () => { live = false; clearTimeout(id); };
+  }, [found, hi, q, loadAlts]);
 
   // ---- hold / recall
   async function hold() {
@@ -156,7 +191,7 @@ export function Pos({ staff, onExit }: { staff: Staff; onExit: () => void }) {
       else if (e.key === 'F7') { e.preventDefault(); if (lines.length && window.confirm('Clear this bill?')) clearBill(); }
       else if (e.key === 'F8') { e.preventDefault(); discRef.current?.focus(); discRef.current?.select(); }
       else if (e.key === 'F9') { e.preventDefault(); if (!payOpen) openPay(); }
-      else if (e.key === 'Escape') { setPayOpen(false); setHeldOpen(false); setAlts(null); setEndOpen(false); if (receipt) setReceipt(null); }
+      else if (e.key === 'Escape') { setPayOpen(false); setHeldOpen(false); setEndOpen(false); if (receipt) setReceipt(null); }
     };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }); // re-bound every render so handlers always see current state
@@ -198,89 +233,98 @@ export function Pos({ staff, onExit }: { staff: Staff; onExit: () => void }) {
       </div>
       {flash && <div className="toast" role="status">{flash}</div>}
 
-      <div className="posbody">
-        <div className="posleft">
-          <label className="possearch"><Icon name="search" size={16} />
-            <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onSearchKey} placeholder="Scan barcode or type medicine / generic name   (F2)" aria-label="Search medicine" autoComplete="off" /></label>
-          <div className="results">
-            {found.map((f, idx) => {
-              const d = f.nearestExpiry ? daysTo(f.nearestExpiry) : null;
-              const first = f.packs[0];
-              return (
-                <div key={f.productId} className={`result ${idx === hi ? 'hi' : ''} ${f.units === 0 ? 'out' : ''}`} onMouseEnter={() => setHi(idx)}>
-                  <div className="rmain">
-                    <b>{f.name} {f.strength}</b> <span className="dim">{f.dosageForm}</span> {f.rx !== 'otc' && <span className="pill warn">{f.rx === 'controlled' ? 'Controlled' : 'Rx'}</span>}
-                    <div className="dim small">{[f.generic, f.company].filter(Boolean).join(' · ')}</div>
+      <div className="possearchbar">
+        <label className="possearch"><Icon name="search" size={16} />
+          <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onSearchKey} placeholder="Scan barcode or type medicine / generic name   (F2)" aria-label="Search medicine" autoComplete="off" /></label>
+        {q.trim() && (
+          <div className="dropdown">
+            <div className="ddlist">
+              {found.map((f, idx) => {
+                const d = f.nearestExpiry ? daysTo(f.nearestExpiry) : null;
+                const first = f.packs[0];
+                return (
+                  <div key={f.productId} className={`result ${idx === hi ? 'hi' : ''} ${f.units === 0 ? 'out' : ''}`} onMouseEnter={() => setHi(idx)}>
+                    <div className="rmain">
+                      <b>{f.name} {f.strength}</b> <span className="dim">{f.dosageForm}</span> {f.rx !== 'otc' && <span className="pill warn">{f.rx === 'controlled' ? 'Controlled' : 'Rx'}</span>}
+                      <div className="dim small">{[f.generic, f.company].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    <div className="rstock">
+                      {f.units === 0 ? <span className="pill st-cancelled">Out of stock</span> : <><span className="num">{f.units} {f.baseUnit.toLowerCase()}s</span>{first.pieces > 1 && <div className="dim small">{Math.floor(f.units / first.pieces)} × {first.unit.toLowerCase()}</div>}</>}
+                      {d !== null && <div className={`small ${d <= 0 ? 'badtext' : d <= WARN_DAYS ? 'warntext' : 'dim'}`}>exp {expText(f.nearestExpiry)}{d <= WARN_DAYS ? ` · ${d}d` : ''}</div>}
+                    </div>
+                    <div className="rpacks">
+                      {f.packs.map((p) => <button key={p.variantId} className="btn packbtn" disabled={p.available < 1} onClick={() => addPack(f, p.variantId)} title={`${p.pieces} ${f.baseUnit.toLowerCase()}${p.pieces > 1 ? 's' : ''}`}>{p.unit} <b className="num">{taka(p.price)}</b></button>)}
+                    </div>
                   </div>
-                  <div className="rstock">
-                    {f.units === 0 ? <span className="pill st-cancelled">Out of stock</span> : <><span className="num">{f.units} {f.baseUnit.toLowerCase()}s</span>{first.pieces > 1 && <div className="dim small">{Math.floor(f.units / first.pieces)} × {first.unit.toLowerCase()}</div>}</>}
-                    {d !== null && <div className={`small ${d <= 0 ? 'badtext' : d <= WARN_DAYS ? 'warntext' : 'dim'}`}>exp {expText(f.nearestExpiry)}{d <= WARN_DAYS ? ` · ${d}d` : ''}</div>}
-                  </div>
-                  <div className="rpacks">
-                    {f.packs.map((p) => <button key={p.variantId} className="btn packbtn" disabled={p.available < 1} onClick={() => addPack(f, p.variantId)} title={`${p.pieces} ${f.baseUnit.toLowerCase()}${p.pieces > 1 ? 's' : ''}`}>{p.unit} <b className="num">{taka(p.price)}</b></button>)}
-                    <button className="btn" onClick={() => showAlts(f)} title="Same generic, other brands">Alt</button>
-                  </div>
-                </div>
-              );
-            })}
-            {!found.length && q.trim() && <p className="dim" style={{ padding: 16 }}>No match. Check the spelling or scan again.</p>}
-            {!q.trim() && <div className="poshint"><p><kbd>F2</kbd> search · <kbd>Enter</kbd> add · <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>F4</kbd> hold bill · <kbd>F8</kbd> discount · <kbd>F9</kbd> pay · <kbd>F7</kbd> clear</p>
-              <p className="dim">Scan a barcode, or type a brand or generic name. Pick the pack (Strip, Piece, Box) with its button; Enter adds the first pack that is in stock.</p></div>}
+                );
+              })}
+              {!found.length && <p className="dim" style={{ padding: 14 }}>No match. Check the spelling or scan again.</p>}
+            </div>
+            <aside className="ddside">
+              <div className="ddtitle">Same generic{found[hi]?.generic ? `: ${found[hi].generic}` : ''}</div>
+              {(hiAlts ?? []).slice(0, 6).map((a) => <AltCard key={a.productId} a={a} ref0={found[hi] ? { strength: found[hi].strength, perUnit: found[hi].packs[0].price / found[hi].packs[0].pieces } : undefined} compact onAdd={(pack) => addPack(a, pack)} />)}
+              {found[hi] && hiAlts === null && <p className="dim small" style={{ padding: 10 }}>Looking up…</p>}
+              {found[hi] && hiAlts !== null && !hiAlts.length && <p className="dim small" style={{ padding: 10 }}>{found[hi].generic ? 'No other brand of this generic is in stock.' : 'No generic linked to this medicine.'}</p>}
+            </aside>
           </div>
-        </div>
+        )}
+      </div>
 
-        <div className="posright">
-          <div className="billhead"><b>Current bill</b><span className="dim">{lines.reduce((s, l) => s + l.qty, 0)} items</span><span className="sp" />{lines.length > 0 && <button className="link" onClick={() => { if (window.confirm('Clear this bill?')) clearBill(); }}>Clear</button>}</div>
-          <div className="billlines">
-            {lines.map((l, i) => {
-              const p = packOf(l), d = l.nearestExpiry ? daysTo(l.nearestExpiry) : null;
-              return (
-                <div key={l.variantId} className={`bline ${over(l) ? 'bad' : ''}`}>
-                  <div className="bl1"><b>{l.name} {l.strength}</b>{l.rx !== 'otc' && <span className="pill warn">Rx</span>}<button className="icon danger" aria-label={`Remove ${l.name}`} onClick={() => removeLine(i)}><Icon name="x" size={12} /></button></div>
-                  <div className="bl2">
-                    <select aria-label="Pack" value={l.variantId} onChange={(e) => setLine(i, { variantId: Number(e.target.value) })}>{l.packs.map((k) => <option key={k.variantId} value={k.variantId}>{k.label} · {taka(k.price)}</option>)}</select>
-                    <div className="qstep"><button aria-label="Less" onClick={() => l.qty > 1 ? setLine(i, { qty: l.qty - 1 }) : removeLine(i)}>−</button>
-                      <input aria-label={`Quantity ${l.name}`} type="number" min="1" step="1" value={l.qty} onChange={(e) => setLine(i, { qty: Math.max(1, Math.floor(Number(e.target.value)) || 1) })} />
-                      <button aria-label="More" onClick={() => setLine(i, { qty: l.qty + 1 })}>+</button></div>
-                    <span className="num r bltotal">{taka(p.price * l.qty)}</span>
-                  </div>
-                  {over(l) && <div className="small badtext">Only {l.units} {l.baseUnit.toLowerCase()}s in stock</div>}
-                  {!over(l) && d !== null && d <= WARN_DAYS && <div className="small warntext">Oldest batch expires {expText(l.nearestExpiry)}</div>}
-                </div>
-              );
-            })}
-            {!lines.length && <p className="dim" style={{ padding: 16 }}>Bill is empty. Scan or search to add medicines.</p>}
+      <div className="posmain">
+        <section className="billpanel">
+          <div className="billhead"><b>Current bill</b><span className="dim">{lines.reduce((s, l) => s + l.qty, 0)} items · {lines.length} lines</span><span className="sp" />{lines.length > 0 && <button className="link" onClick={() => { if (window.confirm('Clear this bill?')) clearBill(); }}>Clear <kbd>F7</kbd></button>}</div>
+          <div className="billscroll">
+            <table className="grid billtable">
+              <thead><tr><th>#</th><th>Medicine</th><th>Pack</th><th>Qty</th><th>Oldest expiry</th><th className="r">Price</th><th className="r">Total</th><th /></tr></thead>
+              <tbody>
+                {lines.map((l, i) => {
+                  const p = packOf(l), d = l.nearestExpiry ? daysTo(l.nearestExpiry) : null;
+                  return (
+                    <tr key={l.variantId} className={`${over(l) ? 'rowbad' : ''} ${focus?.productId === l.productId ? 'rowfocus' : ''}`} onClick={() => setFocus({ productId: l.productId, name: l.name, generic: l.generic, strength: l.strength, perUnit: p.price / p.pieces })}>
+                      <td className="num dim">{i + 1}</td>
+                      <td><b>{l.name} {l.strength}</b> {l.rx !== 'otc' && <span className="pill warn">Rx</span>}<div className="dim small">{[l.dosageForm, l.generic].filter(Boolean).join(' · ')}</div>{over(l) && <div className="small badtext">Only {l.units} {l.baseUnit.toLowerCase()}s in stock</div>}</td>
+                      <td><select aria-label="Pack" value={l.variantId} onClick={(e) => e.stopPropagation()} onChange={(e) => setLine(i, { variantId: Number(e.target.value) })}>{l.packs.map((k) => <option key={k.variantId} value={k.variantId}>{k.label}</option>)}</select></td>
+                      <td onClick={(e) => e.stopPropagation()}><div className="qstep"><button aria-label="Less" onClick={() => l.qty > 1 ? setLine(i, { qty: l.qty - 1 }) : removeLine(i)}>−</button>
+                        <input aria-label={`Quantity ${l.name}`} type="number" min="1" step="1" value={l.qty} onChange={(e) => setLine(i, { qty: Math.max(1, Math.floor(Number(e.target.value)) || 1) })} />
+                        <button aria-label="More" onClick={() => setLine(i, { qty: l.qty + 1 })}>+</button></div></td>
+                      <td className={d !== null && d <= WARN_DAYS ? 'warntext' : 'dim'}>{expText(l.nearestExpiry)}{d !== null && d <= WARN_DAYS ? ` · ${d}d` : ''}</td>
+                      <td className="num r">{taka(p.price)}</td><td className="num r strong">{taka(p.price * l.qty)}</td>
+                      <td className="act" onClick={(e) => e.stopPropagation()}><button className="icon danger" aria-label={`Remove ${l.name}`} onClick={() => removeLine(i)}><Icon name="x" size={12} /></button></td>
+                    </tr>
+                  );
+                })}
+                {!lines.length && <tr><td colSpan={8} className="empty big">Bill is empty. Scan a barcode or search a medicine above.<div className="poshint2"><kbd>F2</kbd> search · <kbd>Enter</kbd> add · <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>F4</kbd> hold · <kbd>F8</kbd> discount · <kbd>F9</kbd> pay</div></td></tr>}
+              </tbody>
+            </table>
           </div>
+          <div className="suggest">
+            <div className="ddtitle">{focus ? <>Same generic as <b>{focus.name} {focus.strength}</b>{focus.generic ? ` (${focus.generic})` : ''}</> : 'Same-generic suggestions appear here'}</div>
+            <div className="suggestrow">
+              {alts.map((a) => <AltCard key={a.productId} a={a} ref0={focus ? { strength: focus.strength, perUnit: focus.perUnit } : undefined} onAdd={(pack) => addPack(a, pack)} />)}
+              {focus && !alts.length && <span className="dim small">No other brand of this generic is in stock.</span>}
+            </div>
+          </div>
+        </section>
 
-          <div className="billfoot">
+        <aside className="paypanel">
+          <div className="duebox"><span>Amount due</span><b className="num">{taka(total)}</b><small>{lines.reduce((s, l) => s + l.qty, 0)} items{discount > 0 ? ` · saved ${taka(discount)}` : ''}</small></div>
+          <div className="paybody">
+            <div className="sumrow2"><span>Subtotal</span><span className="num">{taka(subtotal)}</span></div>
+            <div className="sumrow2"><span>Discount <kbd>F8</kbd></span>
+              <span className="discin"><input ref={discRef} aria-label="Discount" type="number" min="0" step="any" value={disc.value} onChange={(e) => setDisc({ ...disc, value: e.target.value })} />
+                <select aria-label="Discount type" value={disc.type} onChange={(e) => setDisc({ ...disc, type: e.target.value as Disc['type'] })}><option value="percent">%</option><option value="amount">৳</option></select></span></div>
             {needsRx && (
-              <div className="rxbox"><span className="pill warn">Prescription</span>
+              <div className="rxbox2"><span className="pill warn">Prescription medicine</span>
                 <input aria-label="Patient name" placeholder="Patient name *" value={patient} onChange={(e) => setPatient(e.target.value)} />
                 <input aria-label="Doctor name" placeholder="Doctor name *" value={doctor} onChange={(e) => setDoctor(e.target.value)} /></div>
             )}
             <div className="custrow"><input aria-label="Customer phone" placeholder="Customer phone (optional)" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
               <input aria-label="Customer name" placeholder="Name (optional)" value={custName} onChange={(e) => setCustName(e.target.value)} /></div>
-            <div className="sumrow2"><span>Subtotal</span><span className="num">{taka(subtotal)}</span></div>
-            <div className="sumrow2"><span>Discount <kbd>F8</kbd></span>
-              <span className="discin"><input ref={discRef} aria-label="Discount" type="number" min="0" step="any" value={disc.value} onChange={(e) => setDisc({ ...disc, value: e.target.value })} />
-                <select aria-label="Discount type" value={disc.type} onChange={(e) => setDisc({ ...disc, type: e.target.value as Disc['type'] })}><option value="percent">%</option><option value="amount">৳</option></select>
-                <span className="num dim">−{taka(discount)}</span></span></div>
-            <div className="totalrow"><span>Total</span><b className="num">{taka(total)}</b></div>
             {err && !payOpen && <div className="notice err" role="alert">{err}</div>}
-            <button className="btn primary paybtn" disabled={!lines.length} onClick={openPay}>Pay <kbd>F9</kbd></button>
           </div>
-        </div>
+          <button className="btn primary paybtn" disabled={!lines.length} onClick={openPay}>Pay {taka(total)} <kbd>F9</kbd></button>
+        </aside>
       </div>
-
-      {alts && (
-        <div className="overlay" role="dialog" aria-modal="true" onMouseDown={(e) => { if (e.target === e.currentTarget) setAlts(null); }}>
-          <div className="dialog"><div className="dhead"><h2>Alternatives to {alts.for}</h2><button className="icon" aria-label="Close" onClick={() => setAlts(null)}><Icon name="x" size={14} /></button></div>
-            <div className="dbody">
-              {alts.items.map((a) => <button key={a.variantId} className="btn altrow" onClick={() => api<Found[]>('GET', `/pos/search?q=${encodeURIComponent(a.name)}`).then((r) => { const f = r.find((x) => x.productId === a.productId); if (f) addPack(f, a.variantId); })}>
-                <span><b>{a.name} {a.strength}</b> <span className="dim">{a.company}</span></span><span className="num">{taka(a.price)} <span className="dim">· {a.label} · {a.available} left</span></span></button>)}
-              {!alts.items.length && <p className="dim">No in-stock alternative with the same generic and strength.</p>}
-            </div></div></div>
-      )}
 
       {payOpen && (
         <div className="overlay" role="dialog" aria-modal="true">

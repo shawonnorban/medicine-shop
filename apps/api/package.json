@@ -11,7 +11,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:bulk": "tsx src/db/seed-bulk.ts",
-    "test": "tsx --test src/orders.test.ts src/admin.test.ts src/inventory.test.ts src/pos.test.ts",
+    "test": "bash scripts/test.sh",
     "staff:create": "tsx src/scripts/create-staff.ts",
     "db:seed:generics": "tsx src/db/seed-generics.ts"
   },

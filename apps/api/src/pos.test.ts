@@ -151,6 +151,8 @@ test('shift report and close: expected cash = opening + cash sales - refunds; he
   assert.ok((await call('GET', '/admin/pos/search?q=paracetamol')).json().length >= 3);   // by generic name
   const alts = (await call('GET', `/admin/pos/alternatives/${(await napa()).pid}`)).json();
   assert.ok(alts.length >= 2);
+  assert.ok(alts.every((a: { generic: string; packs: unknown[] }) => a.generic === 'Paracetamol' && a.packs.length >= 1));   // same generic, with packs ready to add
+  assert.equal(alts[0].sameStrength, true);                                                                                 // same strength first
 
   const closed = await call('POST', '/admin/pos/shift/close', { countedCash: rep.expectedCash - 5 });
   assert.equal(closed.statusCode, 200);

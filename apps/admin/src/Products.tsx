@@ -6,10 +6,10 @@ import { taka } from './Orders';
 type Opt = { id: number; name?: string; nameEn?: string };
 type Variant = { id?: number; label: string; unit: string; barcode: string; mrp: string; price: string; pieces: string; sellOnline: boolean; sellPos: boolean; stock?: number };
 type Form = {
-  id?: number; name: string; baseUnit: string; generic: string; companyId: string; categoryId: string; dosageForm: string; strength: string; rx: string;
+  id?: number; needsReview?: boolean; name: string; baseUnit: string; generic: string; companyId: string; categoryId: string; dosageForm: string; strength: string; rx: string;
   description: string; usage: string; warnings: string; imageUrl: string; isActive: boolean; isFeatured: boolean; variants: Variant[];
 };
-type Row = { id: number; baseUnit: string; name: string; strength: string | null; dosageForm: string | null; rx: string; isActive: boolean; generic: string | null; company: string | null; category: string | null; variants: number; stock: number; price: number };
+type Row = { id: number; needsReview: boolean; baseUnit: string; name: string; strength: string | null; dosageForm: string | null; rx: string; isActive: boolean; generic: string | null; company: string | null; category: string | null; variants: number; stock: number; price: number };
 
 const FORMS = ['Tablet', 'Capsule', 'Syrup', 'Suspension', 'Injection', 'Drops', 'Ointment', 'Cream', 'Gel', 'Inhaler', 'Powder', 'Sachet', 'Saline', 'Device', 'Other'];
 const UNITS = ['Strip', 'Box', 'Bottle', 'Vial', 'Tube', 'Piece', 'Pack', 'Sachet'];
@@ -23,7 +23,7 @@ export function Products({ canEdit }: { canEdit: boolean }) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const SIZE = 50;
-  const [q, setQ] = useState(''); const [cat, setCat] = useState(''); const [rx, setRx] = useState('');
+  const [q, setQ] = useState(''); const [cat, setCat] = useState(''); const [rx, setRx] = useState(''); const [review, setReview] = useState(false);
   const [cats, setCats] = useState<Opt[]>([]); const [cos, setCos] = useState<Opt[]>([]);
   const [form, setForm] = useState<Form | null>(null);
   const [err, setErr] = useState(''); const [flash, setFlash] = useState(''); const [busy, setBusy] = useState(false);
@@ -31,10 +31,10 @@ export function Products({ canEdit }: { canEdit: boolean }) {
 
   useEffect(() => { api<Opt[]>('GET', '/categories').then(setCats).catch(() => {}); api<Opt[]>('GET', '/companies').then(setCos).catch(() => {}); }, []);
   const load = useCallback(() => {
-    const p = new URLSearchParams({ ...(q ? { q } : {}), ...(cat ? { category: cat } : {}), ...(rx ? { rx } : {}), limit: String(SIZE), page: String(page) });
+    const p = new URLSearchParams({ ...(q ? { q } : {}), ...(cat ? { category: cat } : {}), ...(rx ? { rx } : {}), ...(review ? { review: '1' } : {}), limit: String(SIZE), page: String(page) });
     api<{ items: Row[]; total: number }>('GET', `/products?${p}`).then((r) => { setRows(r.items); setTotal(r.total); }).catch((e) => setErr(errText(e)));
-  }, [q, cat, rx, page]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setPage(1); }, [q, cat, rx]);
+  }, [q, cat, rx, review, page]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setPage(1); }, [q, cat, rx, review]);
   useEffect(() => { const id = setTimeout(load, 200); return () => clearTimeout(id); }, [load]);
   useEffect(() => { if (!flash) return; const id = setTimeout(() => setFlash(''), 2500); return () => clearTimeout(id); }, [flash]);
 
@@ -43,7 +43,7 @@ export function Products({ canEdit }: { canEdit: boolean }) {
     if (!id) return setForm(blank());
     const p = await api<any>('GET', `/products/${id}`);
     setForm({
-      id: p.id, name: p.name, baseUnit: p.baseUnit ?? 'Piece', generic: p.generic ?? '', companyId: p.companyId ? String(p.companyId) : '', categoryId: p.categoryId ? String(p.categoryId) : '',
+      id: p.id, needsReview: p.needsReview, name: p.name, baseUnit: p.baseUnit ?? 'Piece', generic: p.generic ?? '', companyId: p.companyId ? String(p.companyId) : '', categoryId: p.categoryId ? String(p.categoryId) : '',
       dosageForm: p.dosageForm ?? '', strength: p.strength ?? '', rx: p.rx, description: p.description ?? '', usage: p.usage ?? '', warnings: p.warnings ?? '',
       imageUrl: p.imageUrl ?? '', isActive: p.isActive, isFeatured: p.isFeatured,
       variants: p.variants.map((v: any) => ({ id: v.id, label: v.label, unit: v.unit, barcode: v.barcode ?? '', mrp: String(v.mrp), price: String(v.price), pieces: String(v.pieces), sellOnline: v.sellOnline, sellPos: v.sellPos, stock: v.stock })),
@@ -115,20 +115,21 @@ export function Products({ canEdit }: { canEdit: boolean }) {
           <label className="searchbox"><Icon name="search" size={13} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, generic or barcode" aria-label="Search medicines" /></label>
           <select value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category" style={{ width: 150 }}><option value="">All categories</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.nameEn}</option>)}</select>
           <select value={rx} onChange={(e) => setRx(e.target.value)} aria-label="Type" style={{ width: 130 }}><option value="">All types</option><option value="otc">OTC</option><option value="prescription">Prescription</option><option value="controlled">Controlled</option></select>
+          <label className="swl"><input className="switch" type="checkbox" role="switch" checked={review} onChange={(e) => setReview(e.target.checked)} />Needs review</label>
           {canEdit && <button className="btn primary" onClick={() => open()}><Icon name="plus" size={13} />Add medicine</button>}
         </div></header>
       {flash && <div className="toast" role="status">{flash}</div>}
       {err && !form && <div className="notice err" role="alert">{err}</div>}
       <div className="panel"><table className="grid">
-        <thead><tr><th>Medicine</th><th>Generic</th><th>Company</th><th>Category</th><th>Type</th><th className="r">Packs</th><th className="r">From</th><th className="r">Stock</th><th>Status</th><th className="act" /></tr></thead>
+        <thead><tr><th>Medicine</th><th>Generic</th><th>Company</th><th>Category</th><th>Type</th><th className="r">Packs</th><th className="r">Price</th><th className="r">Stock</th><th>Status</th><th className="act" /></tr></thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} className={canEdit ? 'click' : ''} onClick={() => canEdit && open(r.id)}>
               <td className="strong">{r.name} <span className="dim">{[r.strength, r.dosageForm].filter(Boolean).join(' · ')}</span></td>
               <td>{r.generic ?? <span className="dim">—</span>}</td><td>{r.company ?? <span className="dim">—</span>}</td><td>{r.category ?? <span className="dim">—</span>}</td>
               <td>{r.rx === 'otc' ? <span className="pill mute">OTC</span> : <span className="pill warn">{r.rx === 'prescription' ? 'Rx' : 'Controlled'}</span>}</td>
-              <td className="num r">{r.variants}</td><td className="num r">{taka(r.price)}</td><td className="r">{stockPill(r.stock)} <span className="dim">{r.baseUnit.toLowerCase()}s</span></td>
-              <td><span className={`pill ${r.isActive ? 'ok' : 'mute'}`}>{r.isActive ? 'Active' : 'Inactive'}</span></td>
+              <td className="num r">{r.variants}</td><td className="num r">{taka(r.price)}</td><td className="r nowrap">{stockPill(r.stock)} <span className="dim">{r.baseUnit.toLowerCase()}s</span></td>
+              <td className="nowrap"><span className={`pill ${r.isActive ? 'ok' : 'mute'}`}>{r.isActive ? 'Active' : 'Inactive'}</span> {r.needsReview && <span className="pill warn" title="Starter data: confirm price, pack and manufacturer">Review</span>}</td>
               <td className="act" onClick={(e) => e.stopPropagation()}>{canEdit && <button className="icon danger" aria-label="Delete" title="Delete" onClick={() => remove(r)}><Icon name="trash" size={13} /></button>}</td>
             </tr>
           ))}
@@ -141,6 +142,7 @@ export function Products({ canEdit }: { canEdit: boolean }) {
           <form className="dialog xwide" onSubmit={save}>
             <div className="dhead"><h2>{form.id ? 'Edit medicine' : 'Add medicine'}</h2><button type="button" className="icon" aria-label="Close" onClick={() => setForm(null)}><Icon name="x" size={14} /></button></div>
             <div className="dbody">
+              {form.needsReview && <div className="notice" style={{ background: 'var(--warn-bg)', color: 'var(--warn)' }}>Starter data. Check the price, pack size and manufacturer against the pack or supplier invoice, then save to mark it reviewed.</div>}
               <div className="cols3">
                 <div className="frow span2"><label htmlFor="pn">Brand name<i>*</i></label><input id="pn" required value={form.name} onChange={set('name')} /></div>
                 <div className="frow"><label htmlFor="ps">Strength</label><input id="ps" placeholder="500 mg" value={form.strength} onChange={set('strength')} /></div>
