@@ -8,6 +8,8 @@ import { Products } from './Products';
 import { Stock } from './Stock';
 import { Generics } from './Generics';
 import { Purchases } from './Purchases';
+import { Pos } from './Pos';
+import { PosSales } from './PosSales';
 import { StoreSettings } from './StoreSettings';
 import { Icon, useErr, type IconName } from './ui';
 
@@ -48,6 +50,8 @@ type Tab = { id: string; label: Key; icon: IconName; group: Key; roles?: string[
 const ALL = ['admin', 'pharmacist', 'cashier'];
 const TABS: Tab[] = [
   { id: 'dashboard', label: 'nav.dashboard', icon: 'dashboard', group: 'grp.sales', roles: ALL },
+  { id: 'pos', label: 'nav.pos', icon: 'payment', group: 'grp.sales', roles: ALL },
+  { id: 'possales', label: 'nav.possales', icon: 'history', group: 'grp.sales', roles: ALL },
   { id: 'orders', label: 'nav.orders', icon: 'orders', group: 'grp.sales', roles: ALL },
   { id: 'products', label: 'nav.products', icon: 'pill', group: 'grp.catalog', roles: ALL },
   { id: 'generics', label: 'nav.generics', icon: 'flask', group: 'grp.catalog', roles: ALL },
@@ -116,6 +120,9 @@ export function App() {
   const current = tabs.find((x) => x.id === tab) ?? tabs[0];
   const groups = [...new Set(tabs.map((x) => x.group))];
 
+  // the POS takes the whole screen
+  if (current.id === 'pos') return <Pos staff={staff} onExit={() => { location.hash = 'dashboard'; }} />;
+
   return (
     <div className="shell">
       <aside className="side">
@@ -138,6 +145,7 @@ export function App() {
         </div>
         <main className="content">
           {current.id === 'dashboard' && <Dashboard />}
+          {current.id === 'possales' && <PosSales canVoid={staff.role !== 'cashier'} />}
           {current.id === 'orders' && <Orders canEdit={staff.role !== 'cashier'} />}
           {current.id === 'products' && <Products canEdit={staff.role !== 'cashier'} />}
           {current.id === 'generics' && <Generics canEdit={staff.role !== 'cashier'} />}

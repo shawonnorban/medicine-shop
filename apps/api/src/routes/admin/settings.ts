@@ -9,6 +9,8 @@ const KEYS = ['store_name', 'tagline', 'phone', 'whatsapp', 'email', 'address', 
 const storeSchema = z.object({
   ...Object.fromEntries(KEYS.map((k) => [k, z.string().trim().max(300).optional()])),
   hide_out_of_stock: z.boolean().optional(),
+  pos_cashier_max_discount_pct: z.number().min(0).max(100).optional(),
+  receipt_footer: z.string().trim().max(300).optional(),
   low_stock_at: z.number().int().min(0).max(100000).optional(),
   expiry_warn_days: z.number().int().min(1).max(730).optional(),
 }).strict();

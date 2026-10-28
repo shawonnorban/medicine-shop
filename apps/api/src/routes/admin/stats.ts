@@ -14,6 +14,7 @@ export async function statsRoutes(app: FastifyInstance) {
              COALESCE(sum(total) FILTER (WHERE status <> 'cancelled' AND created_at >= date_trunc('day', now() AT TIME ZONE 'Asia/Dhaka') AT TIME ZONE 'Asia/Dhaka'), 0) AS "salesToday",
              count(*) FILTER (WHERE status IN ('confirmed', 'processing'))::int AS "toShip"
       FROM orders`;
+    const [pos] = await sql`SELECT COALESCE(sum(total), 0) AS total FROM pos_sales WHERE status = 'completed' AND created_at >= date_trunc('day', now() AT TIME ZONE 'Asia/Dhaka') AT TIME ZONE 'Asia/Dhaka'`;
     const [s] = await sql`
       SELECT count(*)::int AS "lowStock" FROM (
         SELECT p.id FROM products p
@@ -23,6 +24,6 @@ export async function statsRoutes(app: FastifyInstance) {
     const [e] = await sql`
       SELECT count(*)::int AS expiring FROM batches
       WHERE qty_on_hand > 0 AND expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + ${expiryWarnDays}::int`;
-    return { ...o, salesToday: Number(o.salesToday), lowStock: s.lowStock, expiringBatches: e.expiring, lowStockAt, expiryWarnDays };
+    return { ...o, salesToday: Number(o.salesToday) + Number(pos.total), counterSalesToday: Number(pos.total), lowStock: s.lowStock, expiringBatches: e.expiring, lowStockAt, expiryWarnDays };
   });
 }

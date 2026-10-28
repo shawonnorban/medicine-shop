@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 
 const EN = {
   'app.name': 'Pharmacy', 'app.admin': 'Admin Console',
-  'nav.dashboard': 'Dashboard', 'nav.products': 'Medicines', 'nav.generics': 'Generic library', 'nav.stock': 'Stock', 'nav.purchases': 'Purchases', 'nav.suppliers': 'Suppliers', 'nav.orders': 'Orders', 'nav.store': 'Store details', 'nav.delivery': 'Delivery', 'nav.payment': 'Payments',
+  'nav.dashboard': 'Dashboard', 'nav.pos': 'Point of sale', 'nav.possales': 'Counter sales', 'nav.products': 'Medicines', 'nav.generics': 'Generic library', 'nav.stock': 'Stock', 'nav.purchases': 'Purchases', 'nav.suppliers': 'Suppliers', 'nav.orders': 'Orders', 'nav.store': 'Store details', 'nav.delivery': 'Delivery', 'nav.payment': 'Payments',
   'nav.categories': 'Categories', 'nav.companies': 'Companies', 'nav.staff': 'Users', 'nav.audit': 'Audit log',
   'grp.sales': 'Sales', 'grp.catalog': 'Catalog', 'grp.settings': 'Settings', 'grp.system': 'System',
   'common.add': 'Add', 'common.edit': 'Edit', 'common.delete': 'Delete', 'common.save': 'Save', 'common.cancel': 'Cancel', 'common.close': 'Close',

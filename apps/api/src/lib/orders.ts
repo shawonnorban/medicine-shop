@@ -17,20 +17,23 @@ type Tx = Parameters<Parameters<typeof sql.begin>[1]>[0];
  */
 export async function allocateStock(tx: Tx, productId: number, units: number, refId: number, reason: 'sale_online' | 'sale_pos' = 'sale_online', refType = 'order') {
   const batches = await tx`
-    SELECT b.id, b.qty_on_hand AS rem
+    SELECT b.id, b.batch_no, b.expiry_date::text AS expiry, b.qty_on_hand AS rem
     FROM batches b
     WHERE b.product_id = ${productId} AND b.expiry_date >= CURRENT_DATE AND b.qty_on_hand > 0
     ORDER BY b.expiry_date, b.id
     FOR UPDATE OF b`;
   let need = units;
+  const taken: { batchId: number; batchNo: string; expiry: string; units: number }[] = [];
   for (const b of batches) {
     if (need <= 0) break;
     const take = Math.min(need, b.rem);
     if (take <= 0) continue;
     await tx`INSERT INTO stock_movements (batch_id, qty, reason, ref_type, ref_id) VALUES (${b.id}, ${-take}, ${reason}, ${refType}, ${refId})`;
     need -= take;
+    taken.push({ batchId: b.id, batchNo: b.batch_no, expiry: b.expiry, units: take });
   }
   if (need > 0) throw new OrderError('insufficient_stock', { productId, availableUnits: units - need });
+  return taken;
 }
 
 export async function createOrder(input: OrderInput) {
