@@ -93,7 +93,7 @@ export async function catalogRoutes(app: FastifyInstance) {
     const [p] = await sql`
       SELECT p.id, p.category_id AS "categoryId", p.slug, p.name, p.dosage_form AS "dosageForm", p.strength, p.rx, p.image_url AS "imageUrl",
              p.description, p.usage_info AS usage, p.warnings,
-             g.id AS "genericId", g.name AS generic, co.name AS company, co.slug AS "companySlug",
+             g.id AS "genericId", g.name AS generic, g.slug AS "genericSlug", co.name AS company, co.slug AS "companySlug",
              c.slug AS "categorySlug", c.name_bn AS "categoryNameBn"
       FROM products p
       LEFT JOIN generics g ON g.id = p.generic_id
@@ -129,9 +129,12 @@ export async function catalogRoutes(app: FastifyInstance) {
         ORDER BY p2.is_featured DESC, p2.id LIMIT 10`,
     ]);
 
+    const [info] = p.genericId ? await sql`
+      SELECT drug_class AS "drugClass", indications, dosage_info AS dosage, side_effects AS "sideEffects", contraindications, interactions,
+             pregnancy_note AS "pregnancyNote", storage_info AS "storageInfo" FROM generics WHERE id = ${p.genericId}` : [];
     const { id: _id, genericId: _g, categoryId: _c, ...product } = p;
     reply.header('cache-control', CACHE);
-    return { ...product, variants, alternatives, related };
+    return { ...product, genericInfo: info ?? null, variants, alternatives, related };
   });
 
   // Typeahead: prefix matches first, then fuzzy (typo tolerant) via pg_trgm.
@@ -148,5 +151,34 @@ export async function catalogRoutes(app: FastifyInstance) {
       LIMIT 8`;
     reply.header('cache-control', 'public, max-age=30');
     return rows.map(({ score: _s, ...r }) => r);
+  });
+
+  // ---- generic library (public reference)
+  app.get('/generics', async (_req, reply) => {
+    const hide = await hideOutOfStock();
+    const rows = await sql`
+      SELECT g.name, g.slug, g.drug_class AS "drugClass",
+             (SELECT count(*)::int FROM products p WHERE p.generic_id = g.id AND p.is_active ${hide ? sql`AND ${hasStock('p')}` : sql``}) AS brands
+      FROM generics g WHERE g.indications IS NOT NULL OR EXISTS (SELECT 1 FROM products p WHERE p.generic_id = g.id AND p.is_active)
+      ORDER BY g.name`;
+    reply.header('cache-control', CACHE);
+    return rows;
+  });
+
+  app.get('/generics/:slug', async (req, reply) => {
+    const { slug } = z.object({ slug: z.string().min(1).max(160) }).parse(req.params);
+    const hide = await hideOutOfStock();
+    const [g] = await sql`
+      SELECT id, name, slug, drug_class AS "drugClass", indications, dosage_info AS dosage, side_effects AS "sideEffects", contraindications, interactions,
+             pregnancy_note AS "pregnancyNote", storage_info AS "storageInfo" FROM generics WHERE slug = ${slug}`;
+    if (!g) return reply.status(404).send({ error: 'not_found' });
+    const brands = await sql`
+      SELECT p.slug, p.name, p.strength, p.dosage_form AS "dosageForm", p.rx, co.name AS company, dv.label AS "variantLabel", dv.price, dv.mrp
+      FROM products p JOIN LATERAL ${defaultVariant('p')} dv ON true LEFT JOIN companies co ON co.id = p.company_id
+      WHERE p.generic_id = ${g.id} AND p.is_active ${hide ? sql`AND ${hasStock('p')}` : sql``}
+      ORDER BY p.strength, dv.price LIMIT 100`;
+    const { id: _id, ...generic } = g;
+    reply.header('cache-control', CACHE);
+    return { ...generic, brands };
   });
 }

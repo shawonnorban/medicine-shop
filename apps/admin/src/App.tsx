@@ -6,6 +6,7 @@ import { useT, type Key } from './i18n';
 import { Orders, useWhen } from './Orders';
 import { Products } from './Products';
 import { Stock } from './Stock';
+import { Generics } from './Generics';
 import { Purchases } from './Purchases';
 import { StoreSettings } from './StoreSettings';
 import { Icon, useErr, type IconName } from './ui';
@@ -49,6 +50,7 @@ const TABS: Tab[] = [
   { id: 'dashboard', label: 'nav.dashboard', icon: 'dashboard', group: 'grp.sales', roles: ALL },
   { id: 'orders', label: 'nav.orders', icon: 'orders', group: 'grp.sales', roles: ALL },
   { id: 'products', label: 'nav.products', icon: 'pill', group: 'grp.catalog', roles: ALL },
+  { id: 'generics', label: 'nav.generics', icon: 'flask', group: 'grp.catalog', roles: ALL },
   { id: 'stock', label: 'nav.stock', icon: 'box', group: 'grp.catalog', roles: ALL },
   { id: 'purchases', label: 'nav.purchases', icon: 'cart', group: 'grp.catalog', roles: ['admin', 'pharmacist'] },
   { id: 'suppliers', label: 'nav.suppliers', icon: 'building', group: 'grp.catalog', roles: ['admin', 'pharmacist'] },
@@ -138,6 +140,7 @@ export function App() {
           {current.id === 'dashboard' && <Dashboard />}
           {current.id === 'orders' && <Orders canEdit={staff.role !== 'cashier'} />}
           {current.id === 'products' && <Products canEdit={staff.role !== 'cashier'} />}
+          {current.id === 'generics' && <Generics canEdit={staff.role !== 'cashier'} />}
           {current.id === 'stock' && <Stock canEdit={staff.role !== 'cashier'} />}
           {current.id === 'purchases' && <Purchases canEdit />}
           {current.id === 'suppliers' && <Crud title="nav.suppliers" path="/suppliers" fields={supFields} defaults={{ isActive: true }} addLabel="common.add" />}

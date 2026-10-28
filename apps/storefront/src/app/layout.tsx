@@ -26,6 +26,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <nav className="menu"><div className="wrap">
             <Link href="/">হোম</Link>
             {cats.map((c) => <Link key={c.id} href={`/category/${c.slug}`}>{c.nameBn}</Link>)}
+            <Link href="/generics">জেনেরিক</Link>
           </div></nav>
           {children}
           <footer className="sitefoot">

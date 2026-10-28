@@ -106,3 +106,31 @@ test('image upload accepts real images only', async () => {
   const bad = form(Buffer.from('<script>alert(1)</script>'), 'evil.png');
   assert.equal((await app.inject({ method: 'POST', url: '/admin/uploads', payload: bad.body, headers: bad.headers })).statusCode, 415);
 });
+
+test('generic library: admin CRUD, delete guard, public generic page lists in-stock brands only', async () => {
+  const a = await login('i-admin@test.local', 'admin');
+  const name = `Zz Libgeneric ${Date.now()}`;
+  const mk = await app.inject({ method: 'POST', url: '/admin/generic-library', headers: a, payload: { name, drugClass: 'Test class', indications: 'Testing', dosage: '1 daily' } });
+  assert.equal(mk.statusCode, 201, mk.body);
+  assert.equal((await app.inject({ method: 'POST', url: '/admin/generic-library', headers: a, payload: { name: name.toUpperCase() } })).statusCode, 409); // names are unique ignoring case
+  const gid = mk.json().id;
+  const got = (await app.inject({ method: 'GET', url: `/admin/generic-library/${gid}`, headers: a })).json();
+  assert.match(got.slug, /^zz-libgeneric-\d+$/);
+
+  // a medicine that uses it, with stock
+  const pr = await app.inject({ method: 'POST', url: '/admin/products', headers: a, payload: { name: `Zz Libmed ${Date.now()}`, generic: name, rx: 'otc', variants: [{ label: 'Strip', mrp: 20, price: 18 }] } });
+  const pid = pr.json().id;
+  const vid = (await app.inject({ method: 'GET', url: `/admin/products/${pid}`, headers: a })).json().variants[0].id;
+  assert.equal((await app.inject({ method: 'DELETE', url: `/admin/generic-library/${gid}`, headers: a })).statusCode, 409);   // in use by a medicine
+
+  const page = () => app.inject({ method: 'GET', url: `/v1/generics/${got.slug}` }).then((r) => r.json());
+  assert.equal((await page()).brands.length, 0);                                                                              // no stock -> not listed
+  await app.inject({ method: 'POST', url: '/admin/purchases', headers: a, payload: { items: [{ variantId: vid, batchNo: 'G1', expiryDate: day(300), qty: 5, costPrice: 10 }] } });
+  const after = await page();
+  assert.equal(after.brands.length, 1);
+  assert.equal(after.indications, 'Testing');
+  const detail = (await app.inject({ method: 'GET', url: `/v1/products/${(await app.inject({ method: 'GET', url: `/admin/products/${pid}`, headers: a })).json().slug}` })).json();
+  assert.equal(detail.genericInfo.dosage, '1 daily');                                                                          // product page carries the library text
+  assert.equal(detail.genericSlug, got.slug);
+  assert.ok((await app.inject({ method: 'GET', url: '/v1/generics' })).json().some((g: { slug: string }) => g.slug === got.slug));
+});

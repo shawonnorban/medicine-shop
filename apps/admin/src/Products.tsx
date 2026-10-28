@@ -81,6 +81,20 @@ export function Products({ canEdit }: { canEdit: boolean }) {
   }
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((f) => f && { ...f, [k]: e.target.value });
   const setVar = (i: number, k: keyof Variant, v: string) => setForm((f) => f && { ...f, variants: f.variants.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
+  async function fillFromLibrary() {
+    if (!form?.generic.trim()) return;
+    setErr('');
+    try {
+      const hits = await api<{ items: { id: number; name: string }[] }>('GET', `/generic-library?q=${encodeURIComponent(form.generic.trim())}&limit=5`);
+      const hit = hits.items.find((g) => g.name.toLowerCase() === form.generic.trim().toLowerCase());
+      if (!hit) return setErr('Not in the generic library yet. Add it under Generic library.');
+      const g = await api<any>('GET', `/generic-library/${hit.id}`);
+      setForm((f) => f && ({
+        ...f, description: f.description || g.indications || '', usage: f.usage || g.dosage || '',
+        warnings: f.warnings || [g.contraindications, g.sideEffects].filter(Boolean).join(' ') || '',
+      }));
+    } catch (x) { setErr(errText(x)); }
+  }
   const fileRef = useRef<HTMLInputElement>(null);
   const stockPill = (n: number) => <span className={`pill ${n === 0 ? 'st-cancelled' : n <= 10 ? 'warn' : 'ok'}`}>{n}</span>;
 
@@ -120,7 +134,7 @@ export function Products({ canEdit }: { canEdit: boolean }) {
               <div className="cols3">
                 <div className="frow span2"><label htmlFor="pn">Brand name<i>*</i></label><input id="pn" required value={form.name} onChange={set('name')} /></div>
                 <div className="frow"><label htmlFor="ps">Strength</label><input id="ps" placeholder="500 mg" value={form.strength} onChange={set('strength')} /></div>
-                <div className="frow span2"><label htmlFor="pg">Generic name</label><input id="pg" list="glist" value={form.generic} onChange={(e) => { set('generic')(e); suggestGenerics(e.target.value); }} /><datalist id="glist">{generics.map((g) => <option key={g} value={g} />)}</datalist></div>
+                <div className="frow span2"><label htmlFor="pg">Generic name <button type="button" className="link" onClick={fillFromLibrary}>fill empty text from library</button></label><input id="pg" list="glist" value={form.generic} onChange={(e) => { set('generic')(e); suggestGenerics(e.target.value); }} /><datalist id="glist">{generics.map((g) => <option key={g} value={g} />)}</datalist></div>
                 <div className="frow"><label htmlFor="pf">Dosage form</label><select id="pf" value={form.dosageForm} onChange={set('dosageForm')}><option value="">—</option>{FORMS.map((f) => <option key={f}>{f}</option>)}</select></div>
                 <div className="frow"><label htmlFor="pc">Company</label><select id="pc" value={form.companyId} onChange={set('companyId')}><option value="">—</option>{cos.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
                 <div className="frow"><label htmlFor="pk">Category</label><select id="pk" value={form.categoryId} onChange={set('categoryId')}><option value="">—</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.nameEn}</option>)}</select></div>

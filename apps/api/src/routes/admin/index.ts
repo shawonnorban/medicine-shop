@@ -8,6 +8,7 @@ import { statsRoutes } from './stats.js';
 import { productAdminRoutes } from './products.js';
 import { inventoryRoutes } from './inventory.js';
 import { uploadRoutes } from './uploads.js';
+import { genericAdminRoutes } from './generics.js';
 import { ZodError } from 'zod';
 
 export async function adminRoutes(app: FastifyInstance) {
@@ -28,4 +29,5 @@ export async function adminRoutes(app: FastifyInstance) {
   await app.register(productAdminRoutes);
   await app.register(inventoryRoutes);
   await app.register(uploadRoutes);
+  await app.register(genericAdminRoutes);
 }

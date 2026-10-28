@@ -10,9 +10,15 @@ export type ProductCardData = {
 export type Variant = { id: number; label: string; unit: string; price: number; mrp: number; stock: number; nearestExpiry: string | null };
 export type Alternative = { slug: string; name: string; strength: string | null; company: string | null; price: number; mrp: number; variantLabel: string };
 export type Related = { slug: string; name: string; strength: string | null; imageUrl: string | null; company: string | null; price: number; mrp: number };
+export type GenericInfo = {
+  drugClass: string | null; indications: string | null; dosage: string | null; sideEffects: string | null; contraindications: string | null;
+  interactions: string | null; pregnancyNote: string | null; storageInfo: string | null;
+};
+export type GenericPage = GenericInfo & { name: string; slug: string; brands: { slug: string; name: string; strength: string | null; dosageForm: string | null; rx: string; company: string | null; variantLabel: string; price: number; mrp: number }[] };
+export type GenericIndexItem = { name: string; slug: string; drugClass: string | null; brands: number };
 export type ProductDetail = Omit<ProductCardData, 'variantId' | 'variantLabel' | 'unit' | 'price' | 'mrp' | 'stock'> & {
   description: string | null; usage: string | null; warnings: string | null; companySlug: string | null; categoryNameBn: string | null;
-  variants: Variant[]; alternatives: Alternative[]; related: Related[];
+  variants: Variant[]; alternatives: Alternative[]; related: Related[]; genericSlug: string | null; genericInfo: GenericInfo | null;
 };
 export type ProductPage = { items: ProductCardData[]; total: number; page: number; limit: number };
 

@@ -12,7 +12,8 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:bulk": "tsx src/db/seed-bulk.ts",
     "test": "tsx --test src/orders.test.ts src/admin.test.ts src/inventory.test.ts",
-    "staff:create": "tsx src/scripts/create-staff.ts"
+    "staff:create": "tsx src/scripts/create-staff.ts",
+    "db:seed:generics": "tsx src/db/seed-generics.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",

@@ -258,3 +258,12 @@ table.info th{width:180px;background:var(--bg)}
 .sumline{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:14px}
 .sumline.total{font-size:18px;border-bottom:0;border-top:2px solid var(--line);margin-top:6px;padding-top:12px}
 @media (max-width:900px){.co-grid{grid-template-columns:1fr}}
+
+/* generic library */
+.ginfo{margin:0 0 12px}.ginfo h2{font-size:15px;margin:10px 0 2px}.ginfo h2 small{font-weight:400;color:var(--muted)}.ginfo p{margin:3px 0;max-width:75ch}
+.ginfo .more{display:inline-block;margin:4px 0;color:var(--brand);font-weight:600}
+.azbar{display:flex;flex-wrap:wrap;gap:4px;margin:14px 0}.azbar a{border:1px solid var(--line);border-radius:6px;padding:2px 9px;background:var(--surface);font-weight:600;font-size:13px}
+.azgroup h3{margin:18px 0 6px;color:var(--brand);border-bottom:1px solid var(--line);padding-bottom:4px}
+.azgroup ul{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:2px 24px}
+.azgroup li{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line)}.azgroup a:hover{color:var(--brand)}
+.chipn{font-size:12px;color:var(--muted);white-space:nowrap}

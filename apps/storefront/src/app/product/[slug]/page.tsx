@@ -45,7 +45,7 @@ export default async function ProductPage({ params }: Params) {
           </div>
 
           <ProductTabs name={p.name} company={p.company} generic={p.generic} strength={p.strength} dosageForm={p.dosageForm}
-                       category={p.categoryNameBn} price={cur} description={p.description} usage={p.usage} warnings={p.warnings} />
+                       category={p.categoryNameBn} price={cur} description={p.description} usage={p.usage} warnings={p.warnings} genericSlug={p.genericSlug} genericInfo={p.genericInfo} />
 
           {p.alternatives.length > 0 && (
             <section className="blk">
