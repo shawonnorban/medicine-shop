@@ -105,7 +105,7 @@ export default function Checkout() {
           {fee > 0 && zone?.freeOver != null && <small className="muted">৳{zone.freeOver}+ অর্ডারে ডেলিভারি ফ্রি</small>}
           <div className="sumline total"><span>মোট</span><b className="en">{taka(cart.total + fee)}</b></div>
           {err && <p role="alert" className="err">{err}</p>}
-          <button className="cta" type="submit" disabled={busy || !token || !zone} style={{ width: '100%', justifyContent: 'center', borderRadius: 10 }}>
+          <button className="cta" type="submit" disabled={busy || !token || !zone} style={{ width: '100%', justifyContent: 'center', borderRadius: 6 }}>
             {busy ? 'অপেক্ষা করুন…' : 'অর্ডার নিশ্চিত করুন'}
           </button>
           {!token && <small className="muted">অর্ডারের আগে মোবাইল নম্বর ভেরিফাই করুন।</small>}

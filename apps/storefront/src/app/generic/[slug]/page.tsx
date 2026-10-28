@@ -25,7 +25,7 @@ export default async function GenericDetail({ params }: Params) {
             <h1 style={{ textTransform: 'none' }}>{g.name}</h1>
             {g.drugClass && <div className="meta en">{g.drugClass}</div>}
           </div>
-          <div className="ppanel" style={{ marginTop: 14, borderRadius: 12 }}>
+          <div className="ppanel" style={{ marginTop: 14, borderRadius: 6 }}>
             {rows.filter(([, v]) => v).map(([k, v]) => <div key={k} className="ginfo"><h2>{k}</h2><p>{v}</p></div>)}
             <small className="muted">General information only. It does not replace advice from your doctor or pharmacist.</small>
           </div>
