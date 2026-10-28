@@ -1,6 +1,7 @@
 import { sql } from './client.js';
 
-type V = { label: string; unit?: string; mrp: number; price: number; qty: number };
+// qty = packs received. pieces = base units per pack (strip of 10 => 10). loose adds a single-piece pack priced per piece.
+type V = { label: string; unit?: string; mrp: number; price: number; qty: number; pieces?: number; loose?: number };
 type P = {
   name: string; generic: string; company: string; cat: string;
   form?: string; strength?: string; rx?: 'otc' | 'prescription'; image?: string;
@@ -21,22 +22,22 @@ const products: P[] = [
     desc: 'জ্বর, মাথাব্যথা, দাঁতব্যথা ও শরীর ব্যথায় ব্যবহৃত হয়।',
     usage: 'প্রাপ্তবয়স্ক: ১–২টি ট্যাবলেট প্রয়োজনে ৪–৬ ঘণ্টা পরপর। দিনে সর্বোচ্চ ৮টি।',
     warn: 'লিভারের সমস্যা থাকলে বা নিয়মিত মদ্যপান করলে ডাক্তারের পরামর্শ নিন।',
-    variants: [{ label: '১ পাতা (১০ টি)', mrp: 12, price: 12, qty: 800 }, { label: '১ বক্স (১০ পাতা)', mrp: 120, price: 115, qty: 90 }] },
+    variants: [{ label: '১ পাতা (১০ টি)', mrp: 12, price: 12, qty: 800, pieces: 10, loose: 1.2 }, { label: '১ বক্স (১০ পাতা)', mrp: 120, price: 115, qty: 90, pieces: 100 }] },
   { name: 'Ace', generic: 'Paracetamol', company: 'Square Pharmaceuticals', cat: 'medicine', form: 'Tablet', strength: '500 mg',
-    desc: 'জ্বর ও ব্যথানাশক।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 12, price: 11, qty: 640 }] },
+    desc: 'জ্বর ও ব্যথানাশক।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 12, price: 11, qty: 640, pieces: 10, loose: 1.2 }] },
   { name: 'Fast', generic: 'Paracetamol', company: 'Renata', cat: 'medicine', form: 'Tablet', strength: '500 mg',
-    desc: 'জ্বর ও ব্যথানাশক।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 12, price: 12, qty: 410 }] },
+    desc: 'জ্বর ও ব্যথানাশক।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 12, price: 12, qty: 410, pieces: 10, loose: 1.2 }] },
   { name: 'Seclo', generic: 'Omeprazole', company: 'Square Pharmaceuticals', cat: 'medicine', form: 'Capsule', strength: '20 mg',
-    desc: 'গ্যাস্ট্রিক ও অ্যাসিডিটির চিকিৎসায়।', usage: 'খাবারের ৩০ মিনিট আগে।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 70, price: 66, qty: 300 }] },
+    desc: 'গ্যাস্ট্রিক ও অ্যাসিডিটির চিকিৎসায়।', usage: 'খাবারের ৩০ মিনিট আগে।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 70, price: 66, qty: 300, pieces: 10, loose: 7.0 }] },
   { name: 'Sergel', generic: 'Esomeprazole', company: 'Healthcare Pharmaceuticals', cat: 'medicine', form: 'Capsule', strength: '20 mg',
-    desc: 'গ্যাস্ট্রিক আলসার ও GERD-এ।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 70, price: 68, qty: 250 }] },
+    desc: 'গ্যাস্ট্রিক আলসার ও GERD-এ।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 70, price: 68, qty: 250, pieces: 10, loose: 7.0 }] },
   { name: 'Moxacil', generic: 'Amoxicillin', company: 'Square Pharmaceuticals', cat: 'medicine', form: 'Capsule', strength: '500 mg', rx: 'prescription',
     desc: 'ব্যাকটেরিয়াজনিত সংক্রমণের অ্যান্টিবায়োটিক।', warn: 'শুধু রেজিস্টার্ড ডাক্তারের প্রেসক্রিপশন অনুযায়ী সেবন করুন।',
-    variants: [{ label: '১ পাতা (৮ টি)', mrp: 80, price: 76, qty: 210 }] },
+    variants: [{ label: '১ পাতা (৮ টি)', mrp: 80, price: 76, qty: 210, pieces: 8, loose: 10.0 }] },
   { name: 'Finix', generic: 'Fexofenadine', company: 'Beximco Pharmaceuticals', cat: 'medicine', form: 'Tablet', strength: '120 mg',
-    desc: 'অ্যালার্জি ও হাঁচি-সর্দিতে।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 80, price: 75, qty: 180 }] },
+    desc: 'অ্যালার্জি ও হাঁচি-সর্দিতে।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 80, price: 75, qty: 180, pieces: 10, loose: 8.0 }] },
   { name: 'Monas', generic: 'Montelukast', company: 'Acme Laboratories', cat: 'medicine', form: 'Tablet', strength: '10 mg', rx: 'prescription',
-    desc: 'অ্যাজমা ও অ্যালার্জিক রাইনাইটিসে।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 150, price: 140, qty: 120 }] },
+    desc: 'অ্যাজমা ও অ্যালার্জিক রাইনাইটিসে।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 150, price: 140, qty: 120, pieces: 10, loose: 15.0 }] },
   { name: 'Himalaya Tulsi', generic: 'Tulsi', company: 'Himalaya', cat: 'herbal', form: 'Tablet',
     desc: 'রোগ প্রতিরোধ ক্ষমতা বাড়াতে সহায়ক হারবাল ট্যাবলেট।', variants: [{ label: '৬০ ট্যাবলেট', mrp: 320, price: 320, qty: 60 }] },
   { name: 'Ashwagandha Capsule', generic: 'Ashwagandha', company: 'Himalaya', cat: 'herbal', form: 'Capsule',
@@ -48,7 +49,7 @@ const products: P[] = [
   { name: 'Vitamin D3', generic: 'Cholecalciferol', company: "Nature's Bounty", cat: 'vitamins', form: 'Softgel', strength: '1000 IU',
     desc: 'হাড় ও দাঁতের সুস্থতায়।', variants: [{ label: '১০০ সফটজেল', mrp: 900, price: 780, qty: 25 }] },
   { name: 'Calbo-D', generic: 'Calcium + Vitamin D3', company: 'Square Pharmaceuticals', cat: 'vitamins', form: 'Tablet',
-    desc: 'ক্যালসিয়াম ও ভিটামিন ডি৩ সাপ্লিমেন্ট।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 90, price: 85, qty: 220 }] },
+    desc: 'ক্যালসিয়াম ও ভিটামিন ডি৩ সাপ্লিমেন্ট।', variants: [{ label: '১ পাতা (১০ টি)', mrp: 90, price: 85, qty: 220, pieces: 10, loose: 9.0 }] },
   { name: 'Omron BP Monitor HEM-7121', generic: 'Blood pressure monitor', company: 'Omron', cat: 'healthcare',
     desc: 'ডিজিটাল ব্লাড প্রেসার মনিটর।', variants: [{ label: '১ পিস', unit: 'Piece', mrp: 4768, price: 4291, qty: 8 }] },
   { name: 'Fine Test Glucometer', generic: 'Glucose meter', company: 'Fine Test', cat: 'healthcare',
@@ -91,17 +92,23 @@ await sql.begin(async (tx) => {
       VALUES (${slugify(p.name + ' ' + (p.strength ?? '') + ' ' + (p.form ?? ''))}, ${p.name}, ${gen.get(p.generic)!}, ${comp.get(p.company)!}, ${catId.get(p.cat)!},
               ${p.form ?? null}, ${p.strength ?? null}, ${p.rx ?? 'otc'}, ${p.desc}, ${p.usage ?? null}, ${p.warn ?? null})
       RETURNING id`;
-    let so = 0;
+    let so = 0, vi = 0;
     for (const v of p.variants) {
+      const pieces = v.pieces ?? 1;
       const [vr] = await tx`
-        INSERT INTO product_variants (product_id, label, unit, barcode, mrp, price, sort_order)
-        VALUES (${row.id}, ${v.label}, ${v.unit ?? 'Piece'}, ${String(barcode++)}, ${v.mrp}, ${v.price}, ${so++}) RETURNING id`;
-      // two batches per variant: one near expiry (sold first, FEFO), one fresh
-      const near = Math.ceil(v.qty / 4), fresh = v.qty - near;
+        INSERT INTO product_variants (product_id, label, unit, barcode, mrp, price, pieces, sort_order)
+        VALUES (${row.id}, ${v.label}, ${v.unit ?? 'Piece'}, ${String(barcode++)}, ${v.mrp}, ${v.price}, ${pieces}, ${so++}) RETURNING id`;
+      if (v.loose) { // single-piece pack for counter sales (not sold online)
+        await tx`INSERT INTO product_variants (product_id, label, unit, barcode, mrp, price, pieces, sell_online, sort_order)
+                 VALUES (${row.id}, 'Piece', 'Piece', ${String(barcode++)}, ${v.loose}, ${v.loose}, 1, false, ${so++})`;
+      }
+      // two batches per pack size: one near expiry (sold first, FEFO), one fresh. Stock is stored in base units.
+      vi++;
+      const units = v.qty * pieces, near = Math.ceil(units / 4), fresh = units - near;
       for (const [no, months, qty] of [['B-A', 4, near], ['B-B', 20, fresh]] as const) {
         const [b] = await tx`
-          INSERT INTO batches (variant_id, supplier_id, batch_no, expiry_date, cost_price)
-          VALUES (${vr.id}, ${sup.id}, ${no}, CURRENT_DATE + (${months} * 30), ${Math.round(v.price * 0.8 * 100) / 100}) RETURNING id`;
+          INSERT INTO batches (product_id, variant_id, supplier_id, batch_no, expiry_date, cost_price)
+          VALUES (${row.id}, ${vr.id}, ${sup.id}, ${vi === 1 ? no : `${no}${vi}`}, CURRENT_DATE + (${months} * 30), ${Math.round((v.price / pieces) * 0.8 * 10000) / 10000}) RETURNING id`;
         await tx`INSERT INTO stock_movements (batch_id, qty, reason, ref_type) VALUES (${b.id}, ${qty}, 'purchase', 'seed')`;
       }
     }

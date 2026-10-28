@@ -4,8 +4,8 @@ import { Icon, useErr } from './ui';
 import { taka } from './Orders';
 
 type Sup = { id: number; name: string; isActive: boolean };
-type Found = { id: number; name: string; strength: string | null; label: string; barcode: string | null; generic: string | null; company: string | null; stock: number };
-type Line = { variantId: number; title: string; batchNo: string; expiryDate: string; qty: string; costPrice: string };
+type Found = { id: number; name: string; strength: string | null; label: string; pieces: number; baseUnit: string; barcode: string | null; generic: string | null; company: string | null; units: number };
+type Line = { variantId: number; pieces: number; baseUnit: string; title: string; batchNo: string; expiryDate: string; qty: string; costPrice: string };
 type Purchase = { id: number; invoiceNo: string | null; totalCost: number; createdAt: string; supplier: string | null; by: string | null; lines: number; units: number };
 
 export function Purchases({ canEdit }: { canEdit: boolean }) {
@@ -24,13 +24,13 @@ export function Purchases({ canEdit }: { canEdit: boolean }) {
   useEffect(() => { if (!flash) return; const id = setTimeout(() => setFlash(''), 2500); return () => clearTimeout(id); }, [flash]);
   useEffect(() => {
     if (q.trim().length < 2) { setFound([]); return; }
-    const id = setTimeout(() => api<Found[]>('GET', `/variants/search?q=${encodeURIComponent(q.trim())}`).then(setFound).catch(() => {}), 150);
+    const id = setTimeout(() => api<Found[]>('GET', `/variants/search?for=purchase&q=${encodeURIComponent(q.trim())}`).then(setFound).catch(() => {}), 150);
     return () => clearTimeout(id);
   }, [q]);
 
   function start() { setOpen(true); setErr(''); setLines([]); setSupplierId(''); setInvoiceNo(''); setNote(''); setQ(''); setTimeout(() => qRef.current?.focus(), 50); }
   function add(f: Found) {
-    setLines((l) => [...l, { variantId: f.id, title: `${f.name} ${f.strength ?? ''} · ${f.label}`, batchNo: '', expiryDate: '', qty: '', costPrice: '' }]);
+    setLines((l) => [...l, { variantId: f.id, pieces: f.pieces, baseUnit: f.baseUnit.toLowerCase(), title: `${f.name} ${f.strength ?? ''} · ${f.label}`, batchNo: '', expiryDate: '', qty: '', costPrice: '' }]);
     setQ(''); setFound([]); qRef.current?.focus();
   }
   const upd = (i: number, k: keyof Line, v: string) => setLines((l) => l.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
@@ -77,21 +77,22 @@ export function Purchases({ canEdit }: { canEdit: boolean }) {
               </div>
               <div className="frow pickrow"><label htmlFor="pick">Add medicine</label>
                 <input id="pick" ref={qRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Scan barcode or type brand / generic name" autoComplete="off" />
-                {found.length > 0 && <ul className="picklist">{found.map((f) => <li key={f.id}><button type="button" onClick={() => add(f)}><b>{f.name} {f.strength}</b> <span>{f.label}</span><span className="dim">{[f.generic, f.company].filter(Boolean).join(' · ')}</span><span className="num dim">stock {f.stock}</span></button></li>)}</ul>}
+                {found.length > 0 && <ul className="picklist">{found.map((f) => <li key={f.id}><button type="button" onClick={() => add(f)}><b>{f.name} {f.strength}</b> <span>{f.label}</span><span className="dim">{[f.generic, f.company].filter(Boolean).join(' · ')}</span><span className="num dim">{f.pieces > 1 ? `${f.pieces} per pack · ` : ''}stock {f.units}</span></button></li>)}</ul>}
               </div>
-              <table className="grid flush vtable"><thead><tr><th>Medicine · pack</th><th>Batch no.</th><th>Expiry</th><th className="r">Qty</th><th className="r">Cost ৳ / unit</th><th className="r">Line</th><th className="act" /></tr></thead><tbody>
+              <table className="grid flush vtable"><thead><tr><th>Medicine · pack</th><th>Batch no.</th><th>Expiry</th><th className="r">Packs</th><th>=</th><th className="r">Cost ৳ / pack</th><th className="r">Line</th><th className="act" /></tr></thead><tbody>
                 {lines.map((l, i) => (
                   <tr key={i}>
                     <td className="strong">{l.title}</td>
                     <td><input aria-label="Batch number" required className="mono" value={l.batchNo} onChange={(e) => upd(i, 'batchNo', e.target.value)} /></td>
                     <td><input aria-label="Expiry date" required type="date" value={l.expiryDate} onChange={(e) => upd(i, 'expiryDate', e.target.value)} /></td>
-                    <td><input aria-label="Quantity" required type="number" min="1" step="1" className="r" value={l.qty} onChange={(e) => upd(i, 'qty', e.target.value)} /></td>
-                    <td><input aria-label="Cost per unit" required type="number" min="0" step="any" className="r" value={l.costPrice} onChange={(e) => upd(i, 'costPrice', e.target.value)} /></td>
+                    <td><input aria-label="Packs received" required type="number" min="1" step="1" className="r" value={l.qty} onChange={(e) => upd(i, 'qty', e.target.value)} /></td>
+                    <td className="num dim nowrap">{l.pieces > 1 ? `${(Number(l.qty) || 0) * l.pieces} ${l.baseUnit}` : ''}</td>
+                    <td><input aria-label="Cost per pack" required type="number" min="0" step="any" className="r" value={l.costPrice} onChange={(e) => upd(i, 'costPrice', e.target.value)} /></td>
                     <td className="num r">{taka((Number(l.qty) || 0) * (Number(l.costPrice) || 0))}</td>
                     <td className="act"><button type="button" className="icon danger" aria-label="Remove line" onClick={() => setLines(lines.filter((_, j) => j !== i))}><Icon name="x" size={12} /></button></td>
                   </tr>
                 ))}
-                {!lines.length && <tr><td colSpan={7} className="empty">Search above to add the medicines you received</td></tr>}
+                {!lines.length && <tr><td colSpan={8} className="empty">Search above to add the medicines you received</td></tr>}
               </tbody></table>
               {err && <div className="notice err" role="alert">{err}</div>}
             </div>

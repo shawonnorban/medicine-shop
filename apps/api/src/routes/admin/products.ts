@@ -13,6 +13,9 @@ const variantBody = z.object({
   barcode: z.string().trim().max(40).nullable().optional(),
   mrp: z.number().positive().max(10_000_000),
   price: z.number().positive().max(10_000_000),
+  pieces: z.number().int().min(1).max(100000).default(1),     // base units (pieces) in this pack
+  sellOnline: z.boolean().default(true),
+  sellPos: z.boolean().default(true),
 }).refine((v) => v.price <= v.mrp, { message: 'price must not exceed MRP', path: ['price'] });
 
 const productBody = z.object({
@@ -21,6 +24,7 @@ const productBody = z.object({
   companyId: z.number().int().nullable().optional(),
   categoryId: z.number().int().nullable().optional(),
   dosageForm: z.string().trim().max(40).nullable().optional(),
+  baseUnit: z.string().trim().min(1).max(20).default('Piece'),
   strength: z.string().trim().max(40).nullable().optional(),
   rx: z.enum(['otc', 'prescription', 'controlled']).default('otc'),
   description: z.string().trim().max(2000).nullable().optional(),
@@ -57,7 +61,7 @@ export async function productAdminRoutes(app: FastifyInstance) {
       SELECT p.id, p.name, p.strength, p.dosage_form AS "dosageForm", p.rx, p.is_active AS "isActive", p.is_featured AS "isFeatured",
              g.name AS generic, co.name AS company, c.name_en AS category,
              (SELECT count(*)::int FROM product_variants v WHERE v.product_id = p.id) AS variants,
-             COALESCE((SELECT SUM(b.qty_on_hand) FROM product_variants v JOIN batches b ON b.variant_id = v.id AND b.expiry_date >= CURRENT_DATE WHERE v.product_id = p.id), 0)::int AS stock,
+             COALESCE((SELECT SUM(b.qty_on_hand) FROM batches b WHERE b.product_id = p.id AND b.expiry_date >= CURRENT_DATE), 0)::int AS stock, p.base_unit AS "baseUnit",
              (SELECT min(v.price) FROM product_variants v WHERE v.product_id = p.id) AS price,
              count(*) OVER()::int AS total_rows
       FROM products p
@@ -73,13 +77,13 @@ export async function productAdminRoutes(app: FastifyInstance) {
   app.get('/products/:id', read, async (req, reply) => {
     const { id } = idParam.parse(req.params);
     const [p] = await sql`
-      SELECT p.id, p.name, g.name AS generic, p.company_id AS "companyId", p.category_id AS "categoryId", p.dosage_form AS "dosageForm", p.strength, p.rx,
+      SELECT p.id, p.name, g.name AS generic, p.company_id AS "companyId", p.category_id AS "categoryId", p.dosage_form AS "dosageForm", p.base_unit AS "baseUnit", p.strength, p.rx,
              p.description, p.usage_info AS usage, p.warnings, p.image_url AS "imageUrl", p.is_active AS "isActive", p.is_featured AS "isFeatured", p.slug
       FROM products p LEFT JOIN generics g ON g.id = p.generic_id WHERE p.id = ${id}`;
     if (!p) return reply.status(404).send({ error: 'not_found' });
     const variants = await sql`
-      SELECT v.id, v.label, v.unit, v.barcode, v.mrp, v.price,
-             COALESCE((SELECT SUM(b.qty_on_hand) FROM batches b WHERE b.variant_id = v.id AND b.expiry_date >= CURRENT_DATE), 0)::int AS stock
+      SELECT v.id, v.label, v.unit, v.barcode, v.mrp, v.price, v.pieces, v.sell_online AS "sellOnline", v.sell_pos AS "sellPos",
+             (COALESCE((SELECT SUM(b.qty_on_hand) FROM batches b WHERE b.product_id = v.product_id AND b.expiry_date >= CURRENT_DATE), 0) / v.pieces)::int AS stock
       FROM product_variants v WHERE v.product_id = ${id} ORDER BY v.sort_order, v.id`;
     return { ...p, variants };
   });
@@ -96,13 +100,13 @@ export async function productAdminRoutes(app: FastifyInstance) {
         const genericId = b.generic ? (await tx`INSERT INTO generics (name) VALUES (${b.generic}) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`)[0].id : null;
         const slug = await uniqueSlug(tx, [b.name, b.strength, b.dosageForm].filter(Boolean).join(' '));
         const [p] = await tx`
-          INSERT INTO products (slug, name, generic_id, company_id, category_id, dosage_form, strength, rx, description, usage_info, warnings, image_url, is_active, is_featured)
-          VALUES (${slug}, ${b.name}, ${genericId}, ${b.companyId ?? null}, ${b.categoryId ?? null}, ${b.dosageForm ?? null}, ${b.strength ?? null}, ${b.rx},
+          INSERT INTO products (slug, name, generic_id, company_id, category_id, dosage_form, base_unit, strength, rx, description, usage_info, warnings, image_url, is_active, is_featured)
+          VALUES (${slug}, ${b.name}, ${genericId}, ${b.companyId ?? null}, ${b.categoryId ?? null}, ${b.dosageForm ?? null}, ${b.baseUnit}, ${b.strength ?? null}, ${b.rx},
                   ${b.description ?? null}, ${b.usage ?? null}, ${b.warnings ?? null}, ${b.imageUrl ?? null}, ${b.isActive}, ${b.isFeatured}) RETURNING id`;
         let order = 0;
         for (const v of b.variants) {
-          await tx`INSERT INTO product_variants (product_id, label, unit, barcode, mrp, price, sort_order)
-                   VALUES (${p.id}, ${v.label}, ${v.unit}, ${v.barcode || null}, ${v.mrp}, ${v.price}, ${order++})`;
+          await tx`INSERT INTO product_variants (product_id, label, unit, barcode, mrp, price, pieces, sell_online, sell_pos, sort_order)
+                   VALUES (${p.id}, ${v.label}, ${v.unit}, ${v.barcode || null}, ${v.mrp}, ${v.price}, ${v.pieces}, ${v.sellOnline}, ${v.sellPos}, ${order++})`;
         }
         return p.id as number;
       });
@@ -124,7 +128,7 @@ export async function productAdminRoutes(app: FastifyInstance) {
         const genericId = b.generic ? (await tx`INSERT INTO generics (name) VALUES (${b.generic}) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`)[0].id : null;
         await tx`
           UPDATE products SET name = ${b.name}, generic_id = ${genericId}, company_id = ${b.companyId ?? null}, category_id = ${b.categoryId ?? null},
-                 dosage_form = ${b.dosageForm ?? null}, strength = ${b.strength ?? null}, rx = ${b.rx}, description = ${b.description ?? null},
+                 dosage_form = ${b.dosageForm ?? null}, base_unit = ${b.baseUnit}, strength = ${b.strength ?? null}, rx = ${b.rx}, description = ${b.description ?? null},
                  usage_info = ${b.usage ?? null}, warnings = ${b.warnings ?? null}, image_url = ${b.imageUrl ?? null}, is_active = ${b.isActive}, is_featured = ${b.isFeatured}
           WHERE id = ${id}`;
         // variants: update the ones with ids, insert new ones, remove the ones dropped (only if never stocked or ordered)
@@ -132,14 +136,14 @@ export async function productAdminRoutes(app: FastifyInstance) {
         const existing = await tx`SELECT id FROM product_variants WHERE product_id = ${id}`;
         for (const row of existing) {
           if (keep.includes(row.id)) continue;
-          const [used] = await tx`SELECT (EXISTS (SELECT 1 FROM batches WHERE variant_id = ${row.id}) OR EXISTS (SELECT 1 FROM order_items WHERE variant_id = ${row.id})) AS u`;
+          const [used] = await tx`SELECT (EXISTS (SELECT 1 FROM purchase_items WHERE variant_id = ${row.id}) OR EXISTS (SELECT 1 FROM order_items WHERE variant_id = ${row.id})) AS u`;
           if (used.u) return 'variant_in_use' as const;
           await tx`DELETE FROM product_variants WHERE id = ${row.id}`;
         }
         let order = 0;
         for (const v of b.variants) {
-          if (v.id) await tx`UPDATE product_variants SET label = ${v.label}, unit = ${v.unit}, barcode = ${v.barcode || null}, mrp = ${v.mrp}, price = ${v.price}, sort_order = ${order++} WHERE id = ${v.id} AND product_id = ${id}`;
-          else await tx`INSERT INTO product_variants (product_id, label, unit, barcode, mrp, price, sort_order) VALUES (${id}, ${v.label}, ${v.unit}, ${v.barcode || null}, ${v.mrp}, ${v.price}, ${order++})`;
+          if (v.id) await tx`UPDATE product_variants SET label = ${v.label}, unit = ${v.unit}, barcode = ${v.barcode || null}, mrp = ${v.mrp}, price = ${v.price}, pieces = ${v.pieces}, sell_online = ${v.sellOnline}, sell_pos = ${v.sellPos}, sort_order = ${order++} WHERE id = ${v.id} AND product_id = ${id}`;
+          else await tx`INSERT INTO product_variants (product_id, label, unit, barcode, mrp, price, pieces, sell_online, sell_pos, sort_order) VALUES (${id}, ${v.label}, ${v.unit}, ${v.barcode || null}, ${v.mrp}, ${v.price}, ${v.pieces}, ${v.sellOnline}, ${v.sellPos}, ${order++})`;
         }
         return 'ok' as const;
       });
@@ -155,7 +159,7 @@ export async function productAdminRoutes(app: FastifyInstance) {
 
   app.delete('/products/:id', write, async (req, reply) => {
     const { id } = idParam.parse(req.params);
-    const [u] = await sql`SELECT EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = ${id} AND (EXISTS (SELECT 1 FROM batches b WHERE b.variant_id = v.id) OR EXISTS (SELECT 1 FROM order_items o WHERE o.variant_id = v.id))) AS used`;
+    const [u] = await sql`SELECT (EXISTS (SELECT 1 FROM batches b WHERE b.product_id = ${id}) OR EXISTS (SELECT 1 FROM product_variants v JOIN order_items o ON o.variant_id = v.id WHERE v.product_id = ${id})) AS used`;
     if (u.used) return reply.status(409).send({ error: 'product_in_use' }); // has stock history or orders: deactivate instead
     const r = await sql`DELETE FROM products WHERE id = ${id} RETURNING name`;
     if (!r.length) return reply.status(404).send({ error: 'not_found' });
@@ -163,16 +167,17 @@ export async function productAdminRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  // flat variant search for POS and purchase forms
+  // flat pack search for POS and purchase forms. `for=pos` only returns packs sold at the counter.
   app.get('/variants/search', { preHandler: requirePerm('stock.read') }, async (req) => {
-    const { q } = z.object({ q: z.string().trim().min(1).max(60) }).parse(req.query);
+    const { q, for: use } = z.object({ q: z.string().trim().min(1).max(60), for: z.enum(['pos', 'purchase']).default('purchase') }).parse(req.query);
     const like = `%${q.replace(/[%_\\]/g, '\\$&')}%`;
     return sql`
-      SELECT v.id, v.label, v.unit, v.barcode, v.mrp, v.price, p.id AS "productId", p.name, p.strength, p.dosage_form AS "dosageForm", p.rx, g.name AS generic, co.name AS company,
-             COALESCE((SELECT SUM(b.qty_on_hand) FROM batches b WHERE b.variant_id = v.id AND b.expiry_date >= CURRENT_DATE), 0)::int AS stock
+      SELECT v.id, v.label, v.unit, v.barcode, v.mrp, v.price, v.pieces, p.id AS "productId", p.name, p.strength, p.dosage_form AS "dosageForm", p.base_unit AS "baseUnit", p.rx,
+             g.name AS generic, co.name AS company,
+             COALESCE((SELECT SUM(b.qty_on_hand) FROM batches b WHERE b.product_id = p.id AND b.expiry_date >= CURRENT_DATE), 0)::int AS units
       FROM product_variants v JOIN products p ON p.id = v.product_id AND p.is_active
       LEFT JOIN generics g ON g.id = p.generic_id LEFT JOIN companies co ON co.id = p.company_id
-      WHERE v.barcode = ${q} OR p.name ILIKE ${like} OR g.name ILIKE ${like}
-      ORDER BY (v.barcode = ${q}) DESC NULLS LAST, p.name, v.sort_order LIMIT 20`;
+      WHERE (v.barcode = ${q} OR p.name ILIKE ${like} OR g.name ILIKE ${like}) ${use === 'pos' ? sql`AND v.sell_pos` : sql``}
+      ORDER BY (v.barcode = ${q}) DESC NULLS LAST, p.name, v.sort_order LIMIT 30`;
   });
 }

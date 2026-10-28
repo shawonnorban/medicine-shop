@@ -37,7 +37,8 @@ export async function inventoryRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  // ---- purchases (goods received): creates or tops up batches and writes ledger rows
+  // ---- purchases (goods received): creates or tops up batches and writes ledger rows.
+  // Quantities are entered in packs (e.g. 5 strips) and stored in base units (50 pieces).
   const purchaseBody = z.object({
     supplierId: z.number().int().nullable().optional(),
     invoiceNo: z.string().trim().max(40).nullable().optional(),
@@ -46,8 +47,8 @@ export async function inventoryRoutes(app: FastifyInstance) {
       variantId: z.number().int().positive(),
       batchNo: z.string().trim().min(1).max(40),
       expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      qty: z.number().int().min(1).max(1_000_000),
-      costPrice: z.number().min(0).max(10_000_000),
+      qty: z.number().int().min(1).max(1_000_000),          // number of packs received
+      costPrice: z.number().min(0).max(10_000_000),         // cost of one pack
     })).min(1).max(100),
   });
 
@@ -59,18 +60,21 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const total = b.items.reduce((s, i) => s + i.qty * i.costPrice, 0);
       const [p] = await tx`INSERT INTO purchases (supplier_id, invoice_no, note, total_cost, created_by) VALUES (${b.supplierId ?? null}, ${b.invoiceNo ?? null}, ${b.note ?? null}, ${total}, ${req.staff!.id}) RETURNING id`;
       for (const i of b.items) {
-        // same variant + batch number = the same physical batch: top it up (expiry must agree), otherwise open a new one
-        const [hit] = await tx`SELECT id, expiry_date::text AS expiry FROM batches WHERE variant_id = ${i.variantId} AND batch_no = ${i.batchNo} FOR UPDATE`;
+        const [v] = await tx`SELECT id, product_id, pieces FROM product_variants WHERE id = ${i.variantId}`;
+        if (!v) throw Object.assign(new Error('not_found'), { statusCode: 404 });
+        const units = i.qty * v.pieces, unitCost = i.costPrice / v.pieces;
+        // same product + batch number = the same physical batch: top it up (expiry must agree), otherwise open a new one
+        const [hit] = await tx`SELECT id, expiry_date::text AS expiry FROM batches WHERE product_id = ${v.product_id} AND batch_no = ${i.batchNo} FOR UPDATE`;
         let batchId: number;
         if (hit) {
           if (hit.expiry !== i.expiryDate) throw Object.assign(new Error('batch_expiry_mismatch'), { statusCode: 409 });
           batchId = hit.id;
-          await tx`UPDATE batches SET cost_price = ${i.costPrice} WHERE id = ${batchId}`;
+          await tx`UPDATE batches SET cost_price = ${unitCost} WHERE id = ${batchId}`;
         } else {
-          batchId = (await tx`INSERT INTO batches (variant_id, supplier_id, batch_no, expiry_date, cost_price) VALUES (${i.variantId}, ${b.supplierId ?? null}, ${i.batchNo}, ${i.expiryDate}, ${i.costPrice}) RETURNING id`)[0].id;
+          batchId = (await tx`INSERT INTO batches (product_id, variant_id, supplier_id, batch_no, expiry_date, cost_price) VALUES (${v.product_id}, ${v.id}, ${b.supplierId ?? null}, ${i.batchNo}, ${i.expiryDate}, ${unitCost}) RETURNING id`)[0].id;
         }
-        await tx`INSERT INTO stock_movements (batch_id, qty, reason, ref_type, ref_id) VALUES (${batchId}, ${i.qty}, 'purchase', 'purchase', ${p.id})`;
-        await tx`INSERT INTO purchase_items (purchase_id, batch_id, qty, cost_price) VALUES (${p.id}, ${batchId}, ${i.qty}, ${i.costPrice})`;
+        await tx`INSERT INTO stock_movements (batch_id, qty, reason, ref_type, ref_id) VALUES (${batchId}, ${units}, 'purchase', 'purchase', ${p.id})`;
+        await tx`INSERT INTO purchase_items (purchase_id, batch_id, variant_id, pack_qty, qty, cost_price) VALUES (${p.id}, ${batchId}, ${v.id}, ${i.qty}, ${units}, ${i.costPrice})`;
       }
       return p.id as number;
     });
@@ -83,42 +87,44 @@ export async function inventoryRoutes(app: FastifyInstance) {
     const rows = await sql`
       SELECT p.id, p.invoice_no AS "invoiceNo", p.total_cost AS "totalCost", p.created_at AS "createdAt", s.name AS supplier, st.name AS "by",
              (SELECT count(*)::int FROM purchase_items i WHERE i.purchase_id = p.id) AS lines,
-             (SELECT COALESCE(sum(qty), 0)::int FROM purchase_items i WHERE i.purchase_id = p.id) AS units, count(*) OVER()::int AS total_rows
+             (SELECT COALESCE(sum(COALESCE(pack_qty, qty)), 0)::int FROM purchase_items i WHERE i.purchase_id = p.id) AS units, count(*) OVER()::int AS total_rows
       FROM purchases p LEFT JOIN suppliers s ON s.id = p.supplier_id LEFT JOIN staff st ON st.id = p.created_by
       ORDER BY p.id DESC LIMIT 30 OFFSET ${(page - 1) * 30}`;
     return { items: rows.map(({ total_rows: _t, ...r }) => r), total: rows[0]?.total_rows ?? 0 };
   });
 
-  // ---- stock overview: one row per variant
+  // ---- stock overview: one row per product, counted in its base unit
   app.get('/stock', read, async (req) => {
     const q = z.object({ q: z.string().trim().max(60).optional(), filter: z.enum(['low', 'out', 'expiring']).optional(), page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(30) }).parse(req.query);
     const { lowStockAt, expiryWarnDays } = await getThresholds();
     const like = q.q ? `%${q.q.replace(/[%_\\]/g, '\\$&')}%` : null;
     const rows = await sql`
       SELECT *, count(*) OVER()::int AS total_rows FROM (
-        SELECT v.id AS "variantId", p.name, p.strength, v.label, v.barcode, v.price, g.name AS generic, co.name AS company,
-               COALESCE(SUM(b.qty_on_hand) FILTER (WHERE b.expiry_date >= CURRENT_DATE), 0)::int AS stock,
+        SELECT p.id AS "productId", p.name, p.strength, p.base_unit AS "baseUnit", g.name AS generic, co.name AS company,
+               pv.label AS "packLabel", pv.pieces AS "packPieces", pv.price AS "packPrice",
+               COALESCE(SUM(b.qty_on_hand) FILTER (WHERE b.expiry_date >= CURRENT_DATE), 0)::int AS units,
                COALESCE(SUM(b.qty_on_hand) FILTER (WHERE b.expiry_date < CURRENT_DATE), 0)::int AS expired,
                count(b.id) FILTER (WHERE b.qty_on_hand > 0)::int AS batches,
                min(b.expiry_date) FILTER (WHERE b.qty_on_hand > 0 AND b.expiry_date >= CURRENT_DATE) AS "nearestExpiry"
-        FROM product_variants v JOIN products p ON p.id = v.product_id AND p.is_active
-        LEFT JOIN generics g ON g.id = p.generic_id LEFT JOIN companies co ON co.id = p.company_id LEFT JOIN batches b ON b.variant_id = v.id
-        WHERE true ${like ? sql`AND (p.name ILIKE ${like} OR g.name ILIKE ${like} OR v.barcode = ${q.q!})` : sql``}
-        GROUP BY v.id, p.id, g.id, co.id) t
+        FROM products p
+        JOIN LATERAL (SELECT label, pieces, price FROM product_variants v WHERE v.product_id = p.id ORDER BY v.sort_order, v.id LIMIT 1) pv ON true
+        LEFT JOIN generics g ON g.id = p.generic_id LEFT JOIN companies co ON co.id = p.company_id LEFT JOIN batches b ON b.product_id = p.id
+        WHERE p.is_active ${like ? sql`AND (p.name ILIKE ${like} OR g.name ILIKE ${like} OR EXISTS (SELECT 1 FROM product_variants bv WHERE bv.product_id = p.id AND bv.barcode = ${q.q!}))` : sql``}
+        GROUP BY p.id, g.id, co.id, pv.label, pv.pieces, pv.price) t
       WHERE true
-        ${q.filter === 'out' ? sql`AND stock = 0` : sql``}
-        ${q.filter === 'low' ? sql`AND stock > 0 AND stock <= ${lowStockAt}` : sql``}
+        ${q.filter === 'out' ? sql`AND units = 0` : sql``}
+        ${q.filter === 'low' ? sql`AND units > 0 AND units / "packPieces" <= ${lowStockAt}` : sql``}
         ${q.filter === 'expiring' ? sql`AND "nearestExpiry" <= CURRENT_DATE + ${expiryWarnDays}::int` : sql``}
-      ORDER BY name, "variantId" LIMIT ${q.limit} OFFSET ${(q.page - 1) * q.limit}`;
+      ORDER BY name, "productId" LIMIT ${q.limit} OFFSET ${(q.page - 1) * q.limit}`;
     return { items: rows.map(({ total_rows: _t, ...r }) => r), total: rows[0]?.total_rows ?? 0, lowStockAt, expiryWarnDays };
   });
 
   app.get('/stock/:id/batches', read, async (req) => {
-    const { id } = idParam.parse(req.params);
+    const { id } = idParam.parse(req.params);   // product id
     return sql`
       SELECT b.id, b.batch_no AS "batchNo", b.expiry_date AS expiry, b.cost_price AS "costPrice", b.qty_on_hand AS qty, b.received_at AS "receivedAt", s.name AS supplier,
              (b.expiry_date < CURRENT_DATE) AS expired
-      FROM batches b LEFT JOIN suppliers s ON s.id = b.supplier_id WHERE b.variant_id = ${id} ORDER BY b.expiry_date, b.id`;
+      FROM batches b LEFT JOIN suppliers s ON s.id = b.supplier_id WHERE b.product_id = ${id} ORDER BY b.expiry_date, b.id`;
   });
 
   // manual correction: damage, count difference, expired write-off, return to supplier

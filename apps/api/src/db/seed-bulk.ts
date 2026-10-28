@@ -17,8 +17,8 @@ await sql`
   SELECT id, '১ পাতা (১০ টি)', 'B' || id, 50 + id % 200, 45 + id % 200 FROM products WHERE slug LIKE 'bulk-%'`;
 const [sup] = await sql`SELECT id FROM suppliers LIMIT 1`;
 await sql`
-  INSERT INTO batches (variant_id, supplier_id, batch_no, expiry_date, cost_price)
-  SELECT v.id, ${sup.id}, 'BULK', CURRENT_DATE + 600, 30 FROM product_variants v JOIN products p ON p.id = v.product_id WHERE p.slug LIKE 'bulk-%'`;
+  INSERT INTO batches (product_id, variant_id, supplier_id, batch_no, expiry_date, cost_price)
+  SELECT p.id, v.id, ${sup.id}, 'BULK', CURRENT_DATE + 600, 30 FROM product_variants v JOIN products p ON p.id = v.product_id WHERE p.slug LIKE 'bulk-%'`;
 await sql`
   INSERT INTO stock_movements (batch_id, qty, reason, ref_type)
   SELECT b.id, 100, 'purchase', 'seed' FROM batches b WHERE b.batch_no = 'BULK'`;

@@ -8,8 +8,9 @@ process.env.OTP_DEV = '1';
 const app = buildServer();
 const PHONE = '01712345678';
 
+/** Packs of this variant that can be sold: the product's pooled base units divided by pieces per pack. */
 const stockOf = async (variantId: number) =>
-  (await sql`SELECT COALESCE(SUM(m.qty),0)::int AS q FROM stock_movements m JOIN batches b ON b.id = m.batch_id WHERE b.variant_id = ${variantId}`)[0].q as number;
+  (await sql`SELECT (COALESCE(SUM(b.qty_on_hand), 0) / v.pieces)::int AS q FROM product_variants v LEFT JOIN batches b ON b.product_id = v.product_id WHERE v.id = ${variantId} GROUP BY v.pieces`)[0].q as number;
 
 async function verified() {
   const r = await app.inject({ method: 'POST', url: '/v1/otp/request', payload: { phone: '+880 1712-345678' } });
@@ -26,7 +27,7 @@ test.after(async () => { await app.close(); await sql.end(); });
 test('order flow: price from server, FEFO, cancel restores stock', async () => {
   const [v] = await sql`SELECT v.id, v.price FROM product_variants v JOIN products p ON p.id = v.product_id WHERE p.slug = 'napa-500-mg-tablet' ORDER BY v.id LIMIT 1`;
   const before = await stockOf(v.id);
-  const batchRem = async (no: string) => (await sql`SELECT COALESCE(SUM(m.qty),0)::int AS q FROM stock_movements m JOIN batches b ON b.id = m.batch_id WHERE b.variant_id = ${v.id} AND b.batch_no = ${no}`)[0].q as number;
+  const batchRem = async (no: string) => (await sql`SELECT b.qty_on_hand AS q FROM batches b JOIN product_variants pv ON pv.product_id = b.product_id WHERE pv.id = ${v.id} AND b.batch_no = ${no}`)[0].q as number;
   const nearBefore = await batchRem('B-A');
   const token = await verified();
 
@@ -41,7 +42,7 @@ test('order flow: price from server, FEFO, cancel restores stock', async () => {
   assert.equal(await stockOf(v.id), before - 5);
 
   // earliest-expiry batch (B-A) is consumed first
-  assert.equal(await batchRem('B-A'), nearBefore - 5);
+  assert.equal(await batchRem('B-A'), nearBefore - 5 * 10); // 5 strips of 10 pieces, taken from the earliest-expiry batch
 
   const got = await app.inject({ method: 'GET', url: `/v1/orders/${o.orderNo}?phone=${PHONE}` });
   assert.equal(got.json().items[0].qty, 5);

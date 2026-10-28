@@ -3,7 +3,7 @@ import { api } from './api';
 import { Icon, Pager, useErr } from './ui';
 import { taka } from './Orders';
 
-type Item = { variantId: number; name: string; strength: string | null; label: string; barcode: string | null; price: number; generic: string | null; company: string | null; stock: number; expired: number; batches: number; nearestExpiry: string | null };
+type Item = { productId: number; name: string; strength: string | null; baseUnit: string; packLabel: string; packPieces: number; packPrice: number; generic: string | null; company: string | null; units: number; expired: number; batches: number; nearestExpiry: string | null };
 type Batch = { id: number; batchNo: string; expiry: string; costPrice: number; qty: number; receivedAt: string; supplier: string | null; expired: boolean };
 
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -27,7 +27,7 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
   useEffect(() => { const id = setTimeout(load, 200); return () => clearTimeout(id); }, [load]);
   useEffect(() => { if (!flash) return; const id = setTimeout(() => setFlash(''), 2500); return () => clearTimeout(id); }, [flash]);
 
-  const openBatches = async (it: Item) => { setSel(it); setErr(''); setAdj(null); setBatches(await api<Batch[]>('GET', `/stock/${it.variantId}/batches`)); };
+  const openBatches = async (it: Item) => { setSel(it); setErr(''); setAdj(null); setBatches(await api<Batch[]>('GET', `/stock/${it.productId}/batches`)); };
   async function saveAdj(e: React.FormEvent) {
     e.preventDefault(); if (!adj) return; setErr('');
     const n = Number(adj.qty);
@@ -36,7 +36,9 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
       setAdj(null); setFlash('Stock updated'); await openBatches(sel!); load();
     } catch (x) { setErr(errText(x)); }
   }
-  const pill = (n: number) => <span className={`pill ${n === 0 ? 'st-cancelled' : n <= data.lowStockAt ? 'warn' : 'ok'}`}>{n}</span>;
+  const pill = (i: Item) => <span className={`pill ${i.units === 0 ? 'st-cancelled' : Math.floor(i.units / i.packPieces) <= data.lowStockAt ? 'warn' : 'ok'}`}>{i.units}</span>;
+  /** "12 strips + 4 pieces" style breakdown relative to the first pack. */
+  const packs = (i: Item) => (i.packPieces > 1 ? `${Math.floor(i.units / i.packPieces)} × ${i.packLabel}${i.units % i.packPieces ? ` + ${i.units % i.packPieces}` : ''}` : '');
 
   return (
     <section>
@@ -48,33 +50,33 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
       {flash && <div className="toast" role="status">{flash}</div>}
       {err && !sel && <div className="notice err" role="alert">{err}</div>}
       <div className="panel"><table className="grid">
-        <thead><tr><th>Medicine</th><th>Pack</th><th>Barcode</th><th className="r">Price</th><th className="r">In stock</th><th className="r">Batches</th><th>Nearest expiry</th><th className="r">Expired units</th></tr></thead>
+        <thead><tr><th>Medicine</th><th className="r">In stock</th><th>Equals</th><th className="r">Batches</th><th>Nearest expiry</th><th className="r">Expired</th></tr></thead>
         <tbody>
           {data.items.map((i) => {
             const d = i.nearestExpiry ? daysTo(i.nearestExpiry) : null;
             return (
-              <tr key={i.variantId} className="click" onClick={() => openBatches(i)}>
-                <td className="strong">{i.name} <span className="dim">{i.strength}</span></td><td>{i.label}</td><td className="num dim">{i.barcode ?? '—'}</td><td className="num r">{taka(i.price)}</td>
-                <td className="r">{pill(i.stock)}</td><td className="num r">{i.batches}</td>
+              <tr key={i.productId} className="click" onClick={() => openBatches(i)}>
+                <td className="strong">{i.name} <span className="dim">{i.strength}</span></td>
+                <td className="r">{pill(i)} <span className="dim">{i.baseUnit.toLowerCase()}s</span></td><td className="dim">{packs(i) || '—'}</td><td className="num r">{i.batches}</td>
                 <td>{i.nearestExpiry ? <span className={d! <= data.expiryWarnDays ? 'warntext' : ''}>{fmtDate(i.nearestExpiry)}{d! <= data.expiryWarnDays && <span className="dim"> · {d}d</span>}</span> : <span className="dim">—</span>}</td>
                 <td className="num r">{i.expired ? <span className="badtext">{i.expired}</span> : <span className="dim">0</span>}</td>
               </tr>
             );
           })}
-          {!data.items.length && <tr><td colSpan={8} className="empty">Nothing matches</td></tr>}
+          {!data.items.length && <tr><td colSpan={6} className="empty">Nothing matches</td></tr>}
         </tbody>
       </table><Pager page={page} size={SIZE} total={data.total} onPage={setPage} noun="packs" /></div>
 
       {sel && (
         <div className="overlay" role="dialog" aria-modal="true" onMouseDown={(e) => { if (e.target === e.currentTarget) setSel(null); }}>
           <div className="dialog wide">
-            <div className="dhead"><h2>{sel.name} {sel.strength} <span className="dim">· {sel.label}</span></h2><button className="icon" aria-label="Close" onClick={() => setSel(null)}><Icon name="x" size={14} /></button></div>
+            <div className="dhead"><h2>{sel.name} {sel.strength} <span className="dim">· batches ({sel.baseUnit.toLowerCase()}s)</span></h2><button className="icon" aria-label="Close" onClick={() => setSel(null)}><Icon name="x" size={14} /></button></div>
             <div className="dbody">
-              <table className="grid flush"><thead><tr><th>Batch</th><th>Expiry</th><th>Supplier</th><th className="r">Cost</th><th className="r">On hand</th><th className="act" /></tr></thead><tbody>
+              <table className="grid flush"><thead><tr><th>Batch</th><th>Expiry</th><th>Supplier</th><th className="r">Cost / {'unit'}</th><th className="r">On hand</th><th className="act" /></tr></thead><tbody>
                 {batches.map((b) => (
                   <tr key={b.id}>
                     <td className="num strong">{b.batchNo}</td><td>{fmtDate(b.expiry)} {b.expired && <span className="pill st-cancelled">Expired</span>}</td><td>{b.supplier ?? <span className="dim">—</span>}</td>
-                    <td className="num r">{taka(b.costPrice)}</td><td className="num r">{b.qty}</td>
+                    <td className="num r">৳{Number(b.costPrice).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td><td className="num r">{b.qty}</td>
                     <td className="act">{canEdit && b.qty > 0 && <button className="btn" onClick={() => setAdj({ batch: b, qty: '', reason: b.expired ? 'expired_writeoff' : 'adjustment', note: '' })}>Adjust</button>}</td>
                   </tr>
                 ))}
@@ -86,7 +88,7 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
                   <select aria-label="Reason" value={adj.reason} onChange={(e) => setAdj({ ...adj, reason: e.target.value })}>
                     <option value="adjustment">Stock count correction (+/−)</option><option value="expired_writeoff">Expired write-off</option><option value="return_supplier">Return to supplier</option>
                   </select>
-                  <input aria-label="Quantity" required type="number" step="1" placeholder={adj.reason === 'adjustment' ? '+5 or −3' : 'Units removed'} value={adj.qty} onChange={(e) => setAdj({ ...adj, qty: e.target.value })} style={{ width: 120 }} />
+                  <input aria-label="Quantity" required type="number" step="1" placeholder={adj.reason === 'adjustment' ? `+5 or −3 ${sel!.baseUnit.toLowerCase()}s` : `${sel!.baseUnit}s removed`} value={adj.qty} onChange={(e) => setAdj({ ...adj, qty: e.target.value })} style={{ width: 120 }} />
                   <input aria-label="Note" placeholder="Note (optional)" value={adj.note} onChange={(e) => setAdj({ ...adj, note: e.target.value })} />
                   <button className="btn primary">Apply</button><button type="button" className="btn" onClick={() => setAdj(null)}>Cancel</button>
                 </form>

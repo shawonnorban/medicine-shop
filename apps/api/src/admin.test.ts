@@ -108,7 +108,7 @@ test('settings: store info update shows in public config; unknown keys rejected;
 test('orders: status flow enforced, cancel restores stock, COD marked paid on delivery', async () => {
   const a = await login('t-admin@test.local');
   const [v] = await sql`SELECT v.id FROM product_variants v JOIN products p ON p.id = v.product_id WHERE p.slug = 'napa-500-mg-tablet' ORDER BY v.id LIMIT 1`;
-  const stock = async () => (await sql`SELECT COALESCE(SUM(m.qty),0)::int AS q FROM stock_movements m JOIN batches b ON b.id = m.batch_id WHERE b.variant_id = ${v.id}`)[0].q as number;
+  const stock = async () => (await sql`SELECT (COALESCE(SUM(b.qty_on_hand), 0) / pv.pieces)::int AS q FROM product_variants pv LEFT JOIN batches b ON b.product_id = pv.product_id WHERE pv.id = ${v.id} GROUP BY pv.pieces`)[0].q as number;
   const s0 = await stock();
   await sql`DELETE FROM otp_codes WHERE phone = '01911000222'`;
   const code = (await app.inject({ method: 'POST', url: '/v1/otp/request', payload: { phone: '01911000222' } })).json().devCode;
@@ -126,7 +126,7 @@ test('orders: status flow enforced, cancel restores stock, COD marked paid on de
   assert.equal(await stock(), s0 - 4);
   assert.equal((await put(n2, { status: 'cancelled' })).statusCode, 200);
   assert.equal(await stock(), s0 - 2);                                              // only n1 remains out
-  await sql`INSERT INTO stock_movements (batch_id, qty, reason, ref_type) SELECT b.id, 2, 'adjustment', 'test' FROM batches b WHERE b.variant_id = ${v.id} AND b.batch_no = 'B-B'`;
+  await sql`INSERT INTO stock_movements (batch_id, qty, reason, ref_type) SELECT b.id, 20, 'adjustment', 'test' FROM batches b JOIN product_variants pv ON pv.product_id = b.product_id WHERE pv.id = ${v.id} AND b.batch_no = 'B-B'`; // 2 strips x 10 pieces
   assert.equal(await stock(), s0);
 });
 

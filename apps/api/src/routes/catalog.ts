@@ -6,14 +6,15 @@ import { hideOutOfStock } from '../lib/settings.js';
 // Public catalog responses are identical for every visitor, so let the CDN hold them briefly.
 const CACHE = 'public, max-age=30, s-maxage=60, stale-while-revalidate=300';
 
-/** True when the product has at least one unexpired batch with units left. Uses the per-batch balance, so it needs no ledger scan. */
+/** Units of a product that are sellable now (unexpired batches), as a SQL scalar. */
+const unitsOf = (productRef: ReturnType<typeof sql>) => sql`(SELECT COALESCE(SUM(sb.qty_on_hand), 0) FROM batches sb WHERE sb.product_id = ${productRef} AND sb.expiry_date >= CURRENT_DATE)`;
+/** True when at least one online pack of the product can be sold now. */
 const hasStock = (alias: string) => sql`EXISTS (
-  SELECT 1 FROM product_variants sv JOIN batches sb ON sb.variant_id = sv.id
-  WHERE sv.product_id = ${sql(alias)}.id AND sb.qty_on_hand > 0 AND sb.expiry_date >= CURRENT_DATE)`;
-/** The variant shown on cards: the first one that is in stock, otherwise the first one. */
+  SELECT 1 FROM product_variants sv WHERE sv.product_id = ${sql(alias)}.id AND sv.sell_online AND ${unitsOf(sql`sv.product_id`)} >= sv.pieces)`;
+/** The online pack shown on cards: the first one in stock, otherwise the first one. */
 const defaultVariant = (alias: string) => sql`(
-  SELECT v.* FROM product_variants v WHERE v.product_id = ${sql(alias)}.id
-  ORDER BY EXISTS (SELECT 1 FROM batches b WHERE b.variant_id = v.id AND b.qty_on_hand > 0 AND b.expiry_date >= CURRENT_DATE) DESC, v.sort_order, v.id LIMIT 1)`;
+  SELECT v.* FROM product_variants v WHERE v.product_id = ${sql(alias)}.id AND v.sell_online
+  ORDER BY (${unitsOf(sql`v.product_id`)} >= v.pieces) DESC, v.sort_order, v.id LIMIT 1)`;
 
 const listQuery = z.object({
   category: z.string().optional(),
@@ -60,7 +61,7 @@ export async function catalogRoutes(app: FastifyInstance) {
       WITH page AS (
         SELECT p.slug, p.name, p.dosage_form AS "dosageForm", p.strength, p.rx, p.image_url AS "imageUrl",
                g.name AS generic, co.name AS company, c.slug AS "categorySlug",
-               dv.id AS "variantId", dv.label AS "variantLabel", dv.unit, dv.price, dv.mrp,
+               dv.id AS "variantId", dv.label AS "variantLabel", dv.unit, dv.price, dv.mrp, dv.pieces,
                count(*) OVER()::int AS total
         FROM products p
         JOIN LATERAL ${defaultVariant('p')} dv ON true
@@ -76,10 +77,11 @@ export async function catalogRoutes(app: FastifyInstance) {
         ORDER BY ${order}
         LIMIT ${q.limit} OFFSET ${offset}
       )
-      SELECT page.*, COALESCE(st.qty, 0) AS stock
+      SELECT page.slug, page.name, page."dosageForm", page.strength, page.rx, page."imageUrl", page.generic, page.company, page."categorySlug", page."variantId", page."variantLabel", page.unit, page.price, page.mrp, page.total,
+             (COALESCE(st.qty, 0) / page.pieces)::int AS stock
       FROM page
       LEFT JOIN LATERAL (
-        SELECT SUM(b.qty_on_hand)::int AS qty FROM batches b WHERE b.variant_id = page."variantId" AND b.expiry_date >= CURRENT_DATE
+        SELECT SUM(b.qty_on_hand)::int AS qty FROM batches b JOIN product_variants pv ON pv.product_id = b.product_id AND pv.id = page."variantId" WHERE b.expiry_date >= CURRENT_DATE
       ) st ON true
       ORDER BY ${outerOrder}`;
 
@@ -107,7 +109,7 @@ export async function catalogRoutes(app: FastifyInstance) {
         SELECT v.id, v.label, v.unit, v.price, v.mrp,
                COALESCE(vs.qty, 0) AS stock, to_char(vs.nearest_expiry, 'MM/YYYY') AS "nearestExpiry"
         FROM product_variants v LEFT JOIN variant_stock vs ON vs.variant_id = v.id
-        WHERE v.product_id = ${p.id} ORDER BY v.sort_order, v.id`,
+        WHERE v.product_id = ${p.id} AND v.sell_online ORDER BY v.sort_order, v.id`,
       // same generic + same strength, other brands, cheapest first
       p.genericId
         ? sql`

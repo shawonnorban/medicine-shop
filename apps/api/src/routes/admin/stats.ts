@@ -16,9 +16,10 @@ export async function statsRoutes(app: FastifyInstance) {
       FROM orders`;
     const [s] = await sql`
       SELECT count(*)::int AS "lowStock" FROM (
-        SELECT v.id FROM product_variants v JOIN products p ON p.id = v.product_id AND p.is_active
-        LEFT JOIN batches b ON b.variant_id = v.id AND b.expiry_date >= CURRENT_DATE
-        GROUP BY v.id HAVING COALESCE(SUM(b.qty_on_hand), 0) <= ${lowStockAt}) t`;
+        SELECT p.id FROM products p
+        JOIN LATERAL (SELECT pieces FROM product_variants v WHERE v.product_id = p.id ORDER BY v.sort_order, v.id LIMIT 1) pv ON true
+        LEFT JOIN batches b ON b.product_id = p.id AND b.expiry_date >= CURRENT_DATE
+        WHERE p.is_active GROUP BY p.id, pv.pieces HAVING COALESCE(SUM(b.qty_on_hand), 0) / pv.pieces <= ${lowStockAt}) t`;
     const [e] = await sql`
       SELECT count(*)::int AS expiring FROM batches
       WHERE qty_on_hand > 0 AND expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + ${expiryWarnDays}::int`;

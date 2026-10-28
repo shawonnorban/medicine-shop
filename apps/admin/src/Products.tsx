@@ -4,16 +4,17 @@ import { Icon, Pager, useErr } from './ui';
 import { taka } from './Orders';
 
 type Opt = { id: number; name?: string; nameEn?: string };
-type Variant = { id?: number; label: string; unit: string; barcode: string; mrp: string; price: string; stock?: number };
+type Variant = { id?: number; label: string; unit: string; barcode: string; mrp: string; price: string; pieces: string; sellOnline: boolean; sellPos: boolean; stock?: number };
 type Form = {
-  id?: number; name: string; generic: string; companyId: string; categoryId: string; dosageForm: string; strength: string; rx: string;
+  id?: number; name: string; baseUnit: string; generic: string; companyId: string; categoryId: string; dosageForm: string; strength: string; rx: string;
   description: string; usage: string; warnings: string; imageUrl: string; isActive: boolean; isFeatured: boolean; variants: Variant[];
 };
-type Row = { id: number; name: string; strength: string | null; dosageForm: string | null; rx: string; isActive: boolean; generic: string | null; company: string | null; category: string | null; variants: number; stock: number; price: number };
+type Row = { id: number; baseUnit: string; name: string; strength: string | null; dosageForm: string | null; rx: string; isActive: boolean; generic: string | null; company: string | null; category: string | null; variants: number; stock: number; price: number };
 
 const FORMS = ['Tablet', 'Capsule', 'Syrup', 'Suspension', 'Injection', 'Drops', 'Ointment', 'Cream', 'Gel', 'Inhaler', 'Powder', 'Sachet', 'Saline', 'Device', 'Other'];
 const UNITS = ['Strip', 'Box', 'Bottle', 'Vial', 'Tube', 'Piece', 'Pack', 'Sachet'];
-const blank = (): Form => ({ name: '', generic: '', companyId: '', categoryId: '', dosageForm: 'Tablet', strength: '', rx: 'otc', description: '', usage: '', warnings: '', imageUrl: '', isActive: true, isFeatured: false, variants: [{ label: '', unit: 'Strip', barcode: '', mrp: '', price: '' }] });
+const newVariant = (): Variant => ({ label: '', unit: 'Strip', barcode: '', mrp: '', price: '', pieces: '10', sellOnline: true, sellPos: true });
+const blank = (): Form => ({ name: '', baseUnit: 'Piece', generic: '', companyId: '', categoryId: '', dosageForm: 'Tablet', strength: '', rx: 'otc', description: '', usage: '', warnings: '', imageUrl: '', isActive: true, isFeatured: false, variants: [newVariant()] });
 const nul = (s: string) => (s.trim() === '' ? null : s.trim());
 
 export function Products({ canEdit }: { canEdit: boolean }) {
@@ -42,10 +43,10 @@ export function Products({ canEdit }: { canEdit: boolean }) {
     if (!id) return setForm(blank());
     const p = await api<any>('GET', `/products/${id}`);
     setForm({
-      id: p.id, name: p.name, generic: p.generic ?? '', companyId: p.companyId ? String(p.companyId) : '', categoryId: p.categoryId ? String(p.categoryId) : '',
+      id: p.id, name: p.name, baseUnit: p.baseUnit ?? 'Piece', generic: p.generic ?? '', companyId: p.companyId ? String(p.companyId) : '', categoryId: p.categoryId ? String(p.categoryId) : '',
       dosageForm: p.dosageForm ?? '', strength: p.strength ?? '', rx: p.rx, description: p.description ?? '', usage: p.usage ?? '', warnings: p.warnings ?? '',
       imageUrl: p.imageUrl ?? '', isActive: p.isActive, isFeatured: p.isFeatured,
-      variants: p.variants.map((v: any) => ({ id: v.id, label: v.label, unit: v.unit, barcode: v.barcode ?? '', mrp: String(v.mrp), price: String(v.price), stock: v.stock })),
+      variants: p.variants.map((v: any) => ({ id: v.id, label: v.label, unit: v.unit, barcode: v.barcode ?? '', mrp: String(v.mrp), price: String(v.price), pieces: String(v.pieces), sellOnline: v.sellOnline, sellPos: v.sellPos, stock: v.stock })),
     });
   }
   async function suggestGenerics(v: string) {
@@ -56,10 +57,10 @@ export function Products({ canEdit }: { canEdit: boolean }) {
   async function save(e: React.FormEvent) {
     e.preventDefault(); if (!form) return; setErr(''); setBusy(true);
     const body = {
-      name: form.name.trim(), generic: nul(form.generic), companyId: form.companyId ? Number(form.companyId) : null, categoryId: form.categoryId ? Number(form.categoryId) : null,
+      name: form.name.trim(), baseUnit: form.baseUnit, generic: nul(form.generic), companyId: form.companyId ? Number(form.companyId) : null, categoryId: form.categoryId ? Number(form.categoryId) : null,
       dosageForm: nul(form.dosageForm), strength: nul(form.strength), rx: form.rx, description: nul(form.description), usage: nul(form.usage), warnings: nul(form.warnings),
       imageUrl: nul(form.imageUrl), isActive: form.isActive, isFeatured: form.isFeatured,
-      variants: form.variants.map((v) => ({ ...(v.id ? { id: v.id } : {}), label: v.label.trim(), unit: v.unit, barcode: nul(v.barcode), mrp: Number(v.mrp), price: Number(v.price) })),
+      variants: form.variants.map((v) => ({ ...(v.id ? { id: v.id } : {}), label: v.label.trim(), unit: v.unit, barcode: nul(v.barcode), mrp: Number(v.mrp), price: Number(v.price), pieces: Number(v.pieces) || 1, sellOnline: v.sellOnline, sellPos: v.sellPos })),
     };
     try {
       if (form.id) await api('PUT', `/products/${form.id}`, body); else await api('POST', '/products', body);
@@ -95,6 +96,15 @@ export function Products({ canEdit }: { canEdit: boolean }) {
       }));
     } catch (x) { setErr(errText(x)); }
   }
+  /** Adds a single-piece pack, priced from the first pack's MRP per piece, sold at the counter only. */
+  function addLoose() {
+    setForm((f) => {
+      if (!f) return f;
+      const base = f.variants[0], pcs = Number(base?.pieces) || 1;
+      const mrp = base?.mrp ? (Number(base.mrp) / pcs).toFixed(2) : '', price = base?.price ? (Number(base.price) / pcs).toFixed(2) : mrp;
+      return { ...f, variants: [...f.variants, { ...newVariant(), label: 'Piece', unit: 'Piece', pieces: '1', mrp, price: Number(price) > Number(mrp) ? mrp : price, sellOnline: false }] };
+    });
+  }
   const fileRef = useRef<HTMLInputElement>(null);
   const stockPill = (n: number) => <span className={`pill ${n === 0 ? 'st-cancelled' : n <= 10 ? 'warn' : 'ok'}`}>{n}</span>;
 
@@ -117,7 +127,7 @@ export function Products({ canEdit }: { canEdit: boolean }) {
               <td className="strong">{r.name} <span className="dim">{[r.strength, r.dosageForm].filter(Boolean).join(' · ')}</span></td>
               <td>{r.generic ?? <span className="dim">—</span>}</td><td>{r.company ?? <span className="dim">—</span>}</td><td>{r.category ?? <span className="dim">—</span>}</td>
               <td>{r.rx === 'otc' ? <span className="pill mute">OTC</span> : <span className="pill warn">{r.rx === 'prescription' ? 'Rx' : 'Controlled'}</span>}</td>
-              <td className="num r">{r.variants}</td><td className="num r">{taka(r.price)}</td><td className="r">{stockPill(r.stock)}</td>
+              <td className="num r">{r.variants}</td><td className="num r">{taka(r.price)}</td><td className="r">{stockPill(r.stock)} <span className="dim">{r.baseUnit.toLowerCase()}s</span></td>
               <td><span className={`pill ${r.isActive ? 'ok' : 'mute'}`}>{r.isActive ? 'Active' : 'Inactive'}</span></td>
               <td className="act" onClick={(e) => e.stopPropagation()}>{canEdit && <button className="icon danger" aria-label="Delete" title="Delete" onClick={() => remove(r)}><Icon name="trash" size={13} /></button>}</td>
             </tr>
@@ -136,20 +146,27 @@ export function Products({ canEdit }: { canEdit: boolean }) {
                 <div className="frow"><label htmlFor="ps">Strength</label><input id="ps" placeholder="500 mg" value={form.strength} onChange={set('strength')} /></div>
                 <div className="frow span2"><label htmlFor="pg">Generic name <button type="button" className="link" onClick={fillFromLibrary}>fill empty text from library</button></label><input id="pg" list="glist" value={form.generic} onChange={(e) => { set('generic')(e); suggestGenerics(e.target.value); }} /><datalist id="glist">{generics.map((g) => <option key={g} value={g} />)}</datalist></div>
                 <div className="frow"><label htmlFor="pf">Dosage form</label><select id="pf" value={form.dosageForm} onChange={set('dosageForm')}><option value="">—</option>{FORMS.map((f) => <option key={f}>{f}</option>)}</select></div>
+                <div className="frow"><label htmlFor="pbu">Stock counted in</label><select id="pbu" value={form.baseUnit} onChange={set('baseUnit')}>{['Piece', 'ml', 'Bottle', 'Vial', 'Tube', 'Sachet', 'Gram'].map((u) => <option key={u}>{u}</option>)}</select></div>
                 <div className="frow"><label htmlFor="pc">Company</label><select id="pc" value={form.companyId} onChange={set('companyId')}><option value="">—</option>{cos.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
                 <div className="frow"><label htmlFor="pk">Category</label><select id="pk" value={form.categoryId} onChange={set('categoryId')}><option value="">—</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.nameEn}</option>)}</select></div>
                 <div className="frow"><label htmlFor="pr">Sale type</label><select id="pr" value={form.rx} onChange={set('rx')}><option value="otc">OTC (over the counter)</option><option value="prescription">Prescription only</option><option value="controlled">Controlled</option></select></div>
               </div>
 
-              <div className="vhead"><b>Packs &amp; prices</b><button type="button" className="btn" onClick={() => setForm({ ...form, variants: [...form.variants, { label: '', unit: 'Strip', barcode: '', mrp: '', price: '' }] })}><Icon name="plus" size={12} />Add pack</button></div>
-              <table className="grid flush vtable"><thead><tr><th>Pack label</th><th>Unit</th><th>Barcode</th><th className="r">MRP ৳</th><th className="r">Price ৳</th><th className="r">Stock</th><th className="act" /></tr></thead><tbody>
+              <div className="vhead"><b>Packs &amp; prices</b><span className="tools">
+                <button type="button" className="btn" title="Sell single pieces at the counter from the same stock" onClick={() => addLoose()}>+ Loose piece</button>
+                <button type="button" className="btn" onClick={() => setForm({ ...form, variants: [...form.variants, { ...newVariant(), unit: 'Box', pieces: '100' }] })}><Icon name="plus" size={12} />Add pack</button></span></div>
+              <p className="sub">All packs of a medicine share one stock, counted in {form.baseUnit.toLowerCase()}s. &ldquo;{form.baseUnit}s in pack&rdquo; says how many a strip or box contains; a single piece is 1.</p>
+              <table className="grid flush vtable"><thead><tr><th>Pack label</th><th>Unit</th><th className="r">{form.baseUnit}s in pack</th><th>Barcode</th><th className="r">MRP ৳</th><th className="r">Price ৳</th><th>Online</th><th>Counter</th><th className="r">Packs in stock</th><th className="act" /></tr></thead><tbody>
                 {form.variants.map((v, i) => (
                   <tr key={i}>
                     <td><input aria-label="Pack label" required placeholder="Strip of 10" value={v.label} onChange={(e) => setVar(i, 'label', e.target.value)} /></td>
                     <td><select aria-label="Unit" value={v.unit} onChange={(e) => setVar(i, 'unit', e.target.value)}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select></td>
+                    <td><input aria-label="Pieces in pack" required type="number" min="1" step="1" className="r" style={{ width: 70 }} value={v.pieces} onChange={(e) => setVar(i, 'pieces', e.target.value)} /></td>
                     <td><input aria-label="Barcode" className="mono" value={v.barcode} onChange={(e) => setVar(i, 'barcode', e.target.value)} /></td>
                     <td><input aria-label="MRP" required type="number" step="any" min="0.01" className="r" value={v.mrp} onChange={(e) => setVar(i, 'mrp', e.target.value)} /></td>
                     <td><input aria-label="Price" required type="number" step="any" min="0.01" className="r" value={v.price} onChange={(e) => setVar(i, 'price', e.target.value)} /></td>
+                    <td><input aria-label="Sell online" type="checkbox" className="switch" checked={v.sellOnline} onChange={(e) => setForm((f) => f && { ...f, variants: f.variants.map((x, j) => (j === i ? { ...x, sellOnline: e.target.checked } : x)) })} /></td>
+                    <td><input aria-label="Sell at counter" type="checkbox" className="switch" checked={v.sellPos} onChange={(e) => setForm((f) => f && { ...f, variants: f.variants.map((x, j) => (j === i ? { ...x, sellPos: e.target.checked } : x)) })} /></td>
                     <td className="num r">{v.stock ?? '—'}</td>
                     <td className="act">{form.variants.length > 1 && <button type="button" className="icon danger" aria-label="Remove pack" onClick={() => setForm({ ...form, variants: form.variants.filter((_, j) => j !== i) })}><Icon name="x" size={12} /></button>}</td>
                   </tr>

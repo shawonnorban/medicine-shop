@@ -12,17 +12,17 @@ export class OrderError extends Error {
 type Tx = Parameters<Parameters<typeof sql.begin>[1]>[0];
 
 /**
- * Take `qty` units of a variant from its batches, earliest expiry first (FEFO), by appending negative
- * ledger rows. Batches are locked so two concurrent orders cannot take the same units.
+ * Take `units` base units (pieces) of a product from its batches, earliest expiry first (FEFO), by appending
+ * negative ledger rows. Batches are locked so two concurrent sales cannot take the same units.
  */
-export async function allocateStock(tx: Tx, variantId: number, qty: number, refId: number, reason: 'sale_online' | 'sale_pos' = 'sale_online', refType = 'order') {
+export async function allocateStock(tx: Tx, productId: number, units: number, refId: number, reason: 'sale_online' | 'sale_pos' = 'sale_online', refType = 'order') {
   const batches = await tx`
     SELECT b.id, b.qty_on_hand AS rem
     FROM batches b
-    WHERE b.variant_id = ${variantId} AND b.expiry_date >= CURRENT_DATE AND b.qty_on_hand > 0
+    WHERE b.product_id = ${productId} AND b.expiry_date >= CURRENT_DATE AND b.qty_on_hand > 0
     ORDER BY b.expiry_date, b.id
     FOR UPDATE OF b`;
-  let need = qty;
+  let need = units;
   for (const b of batches) {
     if (need <= 0) break;
     const take = Math.min(need, b.rem);
@@ -30,7 +30,7 @@ export async function allocateStock(tx: Tx, variantId: number, qty: number, refI
     await tx`INSERT INTO stock_movements (batch_id, qty, reason, ref_type, ref_id) VALUES (${b.id}, ${-take}, ${reason}, ${refType}, ${refId})`;
     need -= take;
   }
-  if (need > 0) throw new OrderError('insufficient_stock', { variantId, available: qty - need });
+  if (need > 0) throw new OrderError('insufficient_stock', { productId, availableUnits: units - need });
 }
 
 export async function createOrder(input: OrderInput) {
@@ -41,14 +41,14 @@ export async function createOrder(input: OrderInput) {
   return sql.begin(async (tx) => {
     const ids = [...want.keys()];
     const variants = await tx`
-      SELECT v.id, v.label, v.price, v.mrp, p.name, p.strength, p.rx, p.is_active
+      SELECT v.id, v.label, v.price, v.mrp, v.pieces, v.sell_online, v.product_id, p.name, p.strength, p.rx, p.is_active
       FROM product_variants v JOIN products p ON p.id = v.product_id
       WHERE v.id IN ${tx(ids)}`;
     const byId = new Map(variants.map((v) => [v.id as number, v]));
 
     for (const id of ids) {
       const v = byId.get(id);
-      if (!v || !v.is_active) throw new OrderError('product_unavailable', { variantId: id });
+      if (!v || !v.is_active || !v.sell_online) throw new OrderError('product_unavailable', { variantId: id });
       if (v.rx !== 'otc') throw new OrderError('prescription_required', { variantId: id, name: v.name }); // phase 4 adds the Rx flow
     }
 
@@ -63,13 +63,15 @@ export async function createOrder(input: OrderInput) {
       VALUES (${input.name}, ${input.phone}, ${input.address}, ${input.zone}, ${input.note ?? null}, ${subtotal}, ${fee}, ${total})
       RETURNING id, order_no AS "orderNo"`;
 
-    for (const id of ids.sort((a, b) => a - b)) { // consistent lock order avoids deadlocks
+    // lock stock per product in a fixed order (avoids deadlocks); packs of one product share a single pool
+    const perProduct = new Map<number, number>();
+    for (const id of ids) { const v = byId.get(id)!; perProduct.set(v.product_id, (perProduct.get(v.product_id) ?? 0) + want.get(id)! * v.pieces); }
+    for (const pid of [...perProduct.keys()].sort((a, b) => a - b)) await allocateStock(tx, pid, perProduct.get(pid)!, order.id);
+    for (const id of ids.sort((a, b) => a - b)) {
       const v = byId.get(id)!;
-      const qty = want.get(id)!;
-      await allocateStock(tx, id, qty, order.id);
       await tx`
-        INSERT INTO order_items (order_id, variant_id, name, label, qty, unit_price, mrp)
-        VALUES (${order.id}, ${id}, ${[v.name, v.strength].filter(Boolean).join(' ')}, ${v.label}, ${qty}, ${v.price}, ${v.mrp})`;
+        INSERT INTO order_items (order_id, variant_id, name, label, qty, unit_price, mrp, pieces)
+        VALUES (${order.id}, ${id}, ${[v.name, v.strength].filter(Boolean).join(' ')}, ${v.label}, ${want.get(id)!}, ${v.price}, ${v.mrp}, ${v.pieces})`;
     }
     return { orderNo: order.orderNo as string, subtotal, deliveryFee: fee, total };
   });
