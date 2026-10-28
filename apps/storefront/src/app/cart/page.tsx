@@ -24,7 +24,7 @@ export default function CartPage() {
             </div>
           ))}
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 0', fontSize: 20 }}><b>মোট</b><b className="en" style={{ color: 'var(--brand)' }}>{taka(cart.total)}</b></div>
-          <button className="cta" type="button" disabled title="চেকআউট ধাপ ২-এ আসছে">অর্ডার করুন (শীঘ্রই)</button>
+          <Link className="cta" href="/checkout">চেকআউট →</Link>
         </div>
       )}
     </main>

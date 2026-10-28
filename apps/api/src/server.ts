@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { sql } from './db/client.js';
 import { catalogRoutes } from './routes/catalog.js';
+import { orderRoutes } from './routes/orders.js';
 
 export function buildServer() {
   const app = Fastify({ logger: process.env.NODE_ENV !== 'test' });
@@ -12,6 +13,7 @@ export function buildServer() {
     return { ok: true };
   });
   app.register(catalogRoutes, { prefix: '/v1' });
+  app.register(orderRoutes, { prefix: '/v1' });
 
   app.setErrorHandler((err: { statusCode?: number; message: string }, req, reply) => {
     if (err.statusCode && err.statusCode < 500) return reply.status(err.statusCode).send({ error: err.message });

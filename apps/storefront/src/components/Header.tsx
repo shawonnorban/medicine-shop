@@ -54,7 +54,7 @@ export function Header() {
     <>
       <div className="topbar"><div className="wrap">
         <div><span>🚚 সারা বাংলাদেশে হোম ডেলিভারি</span><span>🛡 ১০০% অথেনটিক পণ্য</span></div>
-        <div><span className="en">📞 +880 1XXX-XXXXXX</span><span>রেজিস্টার / লগইন</span></div>
+        <div><span className="en">📞 +880 1XXX-XXXXXX</span><Link href="/track">অর্ডার ট্র্যাক</Link></div>
       </div></div>
       <header className="site"><div className="wrap">
         <Link className="logo" href="/"><i>+</i><span><b>আপনার ফার্মেসি</b><small>স্বাস্থ্য আমাদের অগ্রাধিকার</small></span></Link>
