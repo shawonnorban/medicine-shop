@@ -39,3 +39,6 @@ const FALLBACK: StoreConfig = {
 export async function getConfig(): Promise<StoreConfig> {
   try { return (await api<StoreConfig>('/v1/config', 30)) ?? FALLBACK; } catch { return FALLBACK; }
 }
+
+/** Uploaded images are stored by the API and referenced by relative path. */
+export const imgSrc = (u: string | null) => (u && u.startsWith('/uploads') ? PUBLIC_API_URL + u : u);

@@ -10,8 +10,7 @@ export type Order = { orderNo: string; name: string; phone: string; zone: string
 type Detail = Order & { address: string; note: string | null; subtotal: number; deliveryFee: number; paymentMethod: string; items: { name: string; label: string; qty: number; unitPrice: number }[]; next: string[] };
 
 export function useWhen() {
-  const { lang } = useT();
-  return (s: string) => new Date(s).toLocaleString(lang === 'bn' ? 'bn-BD' : 'en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+  return (s: string) => new Date(s).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 export const StatusPill = ({ s }: { s: string }) => { const { t } = useT(); return <span className={`pill st-${s}`}>{t(`status.${s}` as Key)}</span>; };

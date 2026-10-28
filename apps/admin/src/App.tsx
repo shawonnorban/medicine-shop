@@ -4,6 +4,9 @@ import { Crud, type Field } from './Crud';
 import { Dashboard } from './Dashboard';
 import { useT, type Key } from './i18n';
 import { Orders, useWhen } from './Orders';
+import { Products } from './Products';
+import { Stock } from './Stock';
+import { Purchases } from './Purchases';
 import { StoreSettings } from './StoreSettings';
 import { Icon, useErr, type IconName } from './ui';
 
@@ -23,6 +26,10 @@ const payFields: Field[] = [
   { key: 'instructions', label: 'pay.instructions', nullable: true },
   { key: 'isEnabled', label: 'pay.enabled', type: 'bool', hint: 'pay.hint' },
 ];
+const supFields: Field[] = [
+  { key: 'name', label: 'staff.name', required: true }, { key: 'phone', label: 'store.phone', nullable: true }, { key: 'address', label: 'store.address', nullable: true },
+  { key: 'isActive', label: 'staff.active', type: 'bool' },
+];
 const catFields: Field[] = [
   { key: 'nameBn', label: 'cat.nameBn', required: true }, { key: 'nameEn', label: 'cat.nameEn', required: true },
   { key: 'slug', label: 'cat.slug', createOnly: true, hint: 'cat.slug.hint', list: false, mono: true },
@@ -41,8 +48,12 @@ const ALL = ['admin', 'pharmacist', 'cashier'];
 const TABS: Tab[] = [
   { id: 'dashboard', label: 'nav.dashboard', icon: 'dashboard', group: 'grp.sales', roles: ALL },
   { id: 'orders', label: 'nav.orders', icon: 'orders', group: 'grp.sales', roles: ALL },
+  { id: 'products', label: 'nav.products', icon: 'pill', group: 'grp.catalog', roles: ALL },
+  { id: 'stock', label: 'nav.stock', icon: 'box', group: 'grp.catalog', roles: ALL },
+  { id: 'purchases', label: 'nav.purchases', icon: 'cart', group: 'grp.catalog', roles: ['admin', 'pharmacist'] },
+  { id: 'suppliers', label: 'nav.suppliers', icon: 'building', group: 'grp.catalog', roles: ['admin', 'pharmacist'] },
   { id: 'categories', label: 'nav.categories', icon: 'tag', group: 'grp.catalog' },
-  { id: 'companies', label: 'nav.companies', icon: 'building', group: 'grp.catalog' },
+  { id: 'companies', label: 'nav.companies', icon: 'store', group: 'grp.catalog' },
   { id: 'store', label: 'nav.store', icon: 'store', group: 'grp.settings' },
   { id: 'delivery', label: 'nav.delivery', icon: 'delivery', group: 'grp.settings' },
   { id: 'payment', label: 'nav.payment', icon: 'payment', group: 'grp.settings' },
@@ -64,16 +75,6 @@ function Audit() {
   );
 }
 
-function LangSwitch() {
-  const { lang, setLang } = useT();
-  return (
-    <div className="lang" role="group" aria-label="Language">
-      <button aria-pressed={lang === 'en'} onClick={() => setLang('en')}>EN</button>
-      <button aria-pressed={lang === 'bn'} onClick={() => setLang('bn')}>বাং</button>
-    </div>
-  );
-}
-
 function Login({ onDone }: { onDone: (s: Staff) => void }) {
   const { t } = useT();
   const errText = useErr();
@@ -87,7 +88,7 @@ function Login({ onDone }: { onDone: (s: Staff) => void }) {
     <main className="loginpage">
       <div className="loginside"><div className="mark">+</div><h1>{t('app.name')}</h1><p>{t('app.admin')}</p></div>
       <form className="loginform" onSubmit={submit}>
-        <div className="lt"><h2>{t('login.title')}</h2><LangSwitch /></div>
+        <div className="lt"><h2>{t('login.title')}</h2></div>
         <p className="sub">{t('login.sub')}</p>
         <div className="frow"><label htmlFor="em">{t('login.email')}</label><input id="em" type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
         <div className="frow"><label htmlFor="pw">{t('login.password')}</label><input id="pw" type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
@@ -129,7 +130,6 @@ export function App() {
         <div className="topbar">
           <span className="crumb">{t(current.group)} <i>/</i> <b>{t(current.label)}</b></span>
           <div className="topright">
-            <LangSwitch />
             <span className="user"><span className="avatar">{staff.name.slice(0, 1).toUpperCase()}</span><span className="uname">{staff.name}<small>{t(ROLES.find(([k]) => k === staff.role)![1])}</small></span></span>
             <button className="icon" title={t('common.logout')} aria-label={t('common.logout')} onClick={async () => { await api('POST', '/auth/logout'); setStaff(null); }}><Icon name="logout" size={14} /></button>
           </div>
@@ -137,6 +137,10 @@ export function App() {
         <main className="content">
           {current.id === 'dashboard' && <Dashboard />}
           {current.id === 'orders' && <Orders canEdit={staff.role !== 'cashier'} />}
+          {current.id === 'products' && <Products canEdit={staff.role !== 'cashier'} />}
+          {current.id === 'stock' && <Stock canEdit={staff.role !== 'cashier'} />}
+          {current.id === 'purchases' && <Purchases canEdit />}
+          {current.id === 'suppliers' && <Crud title="nav.suppliers" path="/suppliers" fields={supFields} defaults={{ isActive: true }} addLabel="common.add" />}
           {current.id === 'store' && <StoreSettings />}
           {current.id === 'delivery' && <Crud title="delivery.title" path="/delivery-zones" fields={zoneFields} defaults={{ isActive: true, sortOrder: 0, fee: 0 }} addLabel="delivery.add" note="delivery.note" />}
           {current.id === 'payment' && <Crud title="pay.title" path="/payment-methods" idKey="code" fields={payFields} canCreate={false} canDelete={false} />}

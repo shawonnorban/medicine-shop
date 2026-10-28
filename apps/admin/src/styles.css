@@ -141,3 +141,24 @@ table.grid{width:100%;border-collapse:collapse}
   .uname{display:none}.loginpage{grid-template-columns:1fr}.loginside{display:none}.searchbox{width:150px}
   .panel{overflow-x:auto}
 }
+
+/* product / purchase forms */
+textarea{width:100%;min-height:52px;padding:6px 9px;border:1px solid var(--line-2);border-radius:var(--r);background:var(--surface);font:inherit;font-size:12.5px;resize:vertical}
+textarea:focus{outline:none;border-color:var(--brand-hi);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand-hi) 22%,transparent)}
+.dialog.xwide{width:min(880px,100%)}
+.cols3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px}.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+.span2{grid-column:span 2}
+.vhead{display:flex;justify-content:space-between;align-items:center;margin-top:4px}
+.vtable input,.vtable select{height:26px}.vtable input.r{text-align:right}.vtable td{padding:3px 6px}.vtable th{padding:0 6px}
+input.mono{font-family:var(--mono);font-size:12px}
+.imgrow{display:flex;align-items:center;gap:8px}.imgrow img,.imgph{width:44px;height:44px;border-radius:6px;border:1px solid var(--line);object-fit:contain;background:var(--sunken);display:grid;place-items:center;font-size:9px;color:var(--dim);text-align:center}
+.switches{display:flex;gap:18px;flex-wrap:wrap}.swl{display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer}
+.rule{border-top:1px solid var(--line);padding-top:10px;grid-column:span 2}
+.pickrow{position:relative}.picklist{position:absolute;z-index:5;top:100%;left:0;right:0;margin:2px 0 0;padding:3px;list-style:none;background:var(--surface);border:1px solid var(--line-2);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.2);max-height:260px;overflow:auto}
+.picklist button{display:grid;grid-template-columns:minmax(0,1.3fr) .8fr 1.2fr auto;gap:10px;width:100%;text-align:left;border:0;background:transparent;padding:6px 8px;border-radius:5px;cursor:pointer;align-items:center}
+.picklist button:hover,.picklist button:focus-visible{background:var(--brand-wash)}
+.totalcost{margin-right:auto;color:var(--dim)}.totalcost b{color:var(--ink);margin-left:6px;font-size:14px}
+.adjform{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px;background:var(--sunken);border:1px solid var(--line);border-radius:8px}.adjform select{width:auto}.adjform input{width:auto;flex:1;min-width:120px}
+.warntext{color:var(--warn);font-weight:500}.badtext{color:var(--bad);font-weight:500}
+@media (max-width:860px){.cols3,.cols2{grid-template-columns:1fr}.span2{grid-column:auto}}
+.tfoot{justify-content:space-between}.tfoot .pg{display:flex;gap:6px}.tfoot .btn{height:22px;font-size:11.5px;padding:0 8px}

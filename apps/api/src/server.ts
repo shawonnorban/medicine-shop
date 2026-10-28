@@ -6,11 +6,17 @@ import { orderRoutes } from './routes/orders.js';
 import { configRoutes } from './routes/config.js';
 import { adminRoutes } from './routes/admin/index.js';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import { UPLOAD_DIR } from './routes/admin/uploads.js';
 
 export function buildServer() {
   const app = Fastify({ logger: process.env.NODE_ENV !== 'test' });
   app.register(cors, { origin: true });
   app.register(cookie);
+  app.register(multipart);
+  // product images; served with a long cache because file names are random and never reused
+  app.register(fastifyStatic, { root: UPLOAD_DIR, prefix: '/uploads/', maxAge: '30d', immutable: true, setHeaders: (res) => { res.setHeader('x-content-type-options', 'nosniff'); } });
 
   app.get('/health', async () => {
     await sql`SELECT 1`;

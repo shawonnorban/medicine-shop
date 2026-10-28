@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useCart } from '@/lib/cart';
-import { savePct, taka, type ProductCardData } from '@/lib/api';
+import { imgSrc, savePct, taka, type ProductCardData } from '@/lib/api';
 
 const PALETTE = ['#1b6fb3', '#2e7d32', '#6a4bb5', '#6d4c41', '#c2185b', '#e08a00', '#00838f'];
 const hue = (s: string) => PALETTE[[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETTE.length];
@@ -27,7 +27,7 @@ export function ProductCard({ p }: { p: ProductCardData }) {
       {save > 0 && <span className="ribbon">Save<br />{save}%</span>}
       <Link href={`/product/${p.slug}`} className="thumb" style={{ background: '#F0F5F2' }} aria-label={p.name}>
         {p.imageUrl
-          ? <img src={p.imageUrl} alt={p.name} loading="lazy" decoding="async" width={200} height={170} style={{ objectFit: 'contain', maxHeight: '100%' }} />
+          ? <img src={imgSrc(p.imageUrl)!} alt={p.name} loading="lazy" decoding="async" width={200} height={170} style={{ objectFit: 'contain', maxHeight: '100%' }} />
           : <span className="pk" style={{ background: hue(p.name) }}>{p.name.split(' ')[0]}</span>}
       </Link>
       <h3><Link href={`/product/${p.slug}`}>{p.name}{p.strength ? ` ${p.strength}` : ''}</Link></h3>

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { api, taka, type ProductDetail } from '@/lib/api';
+import { api, imgSrc, taka, type ProductDetail } from '@/lib/api';
 import { BuyBox } from '@/components/BuyBox';
 import { ProductTabs } from '@/components/ProductTabs';
 
@@ -32,7 +32,7 @@ export default async function ProductPage({ params }: Params) {
           <div className="pdp">
             <div className="gal"><div className="thumb" style={{ background: '#F0F5F2' }}>
               {p.imageUrl
-                ? <img src={p.imageUrl} alt={p.name} width={480} height={400} style={{ objectFit: 'contain', maxHeight: '100%' }} />
+                ? <img src={imgSrc(p.imageUrl)!} alt={p.name} width={480} height={400} style={{ objectFit: 'contain', maxHeight: '100%' }} />
                 : <div className="pk" style={{ background: '#1b6fb3', fontSize: 20 }}>{p.name}</div>}
             </div></div>
             <div className="infobox">
@@ -69,7 +69,7 @@ export default async function ProductPage({ params }: Params) {
               {p.related.map((r) => (
                 <li key={r.slug}>
                   <Link href={`/product/${r.slug}`}>
-                    <span className="rimg">{r.imageUrl ? <img src={r.imageUrl} alt="" loading="lazy" width={56} height={56} /> : <i>💊</i>}</span>
+                    <span className="rimg">{r.imageUrl ? <img src={imgSrc(r.imageUrl)!} alt="" loading="lazy" width={56} height={56} /> : <i>💊</i>}</span>
                     <span className="rtxt">
                       <b className="en">{r.name} {r.strength}</b>
                       <small className="en">{r.company}</small>

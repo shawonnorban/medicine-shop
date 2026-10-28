@@ -2,10 +2,16 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sql } from '../../db/client.js';
 import { audit, requirePerm } from '../../lib/auth.js';
+import { invalidateSettings } from '../../lib/settings.js';
 
 // Only these keys can be written, each with a length cap. Unknown keys are rejected.
 const KEYS = ['store_name', 'tagline', 'phone', 'whatsapp', 'email', 'address', 'drug_license', 'pharmacist_name', 'pharmacist_reg', 'hours_text', 'facebook_url', 'announcement'] as const;
-const storeSchema = z.object(Object.fromEntries(KEYS.map((k) => [k, z.string().trim().max(300).optional()]))).strict();
+const storeSchema = z.object({
+  ...Object.fromEntries(KEYS.map((k) => [k, z.string().trim().max(300).optional()])),
+  hide_out_of_stock: z.boolean().optional(),
+  low_stock_at: z.number().int().min(0).max(100000).optional(),
+  expiry_warn_days: z.number().int().min(1).max(730).optional(),
+}).strict();
 
 const zoneBody = z.object({
   code: z.string().regex(/^[a-z0-9_-]{2,30}$/, 'code: a-z, 0-9, - _'),
@@ -35,6 +41,7 @@ export async function settingsRoutes(app: FastifyInstance) {
         await tx`INSERT INTO settings (key, value) VALUES (${k}, ${tx.json(v)}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
       }
     });
+    invalidateSettings();
     await audit(req, 'settings.store.update', 'settings', undefined, body);
     return { ok: true };
   });

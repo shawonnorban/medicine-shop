@@ -15,11 +15,11 @@ type Tx = Parameters<Parameters<typeof sql.begin>[1]>[0];
  * Take `qty` units of a variant from its batches, earliest expiry first (FEFO), by appending negative
  * ledger rows. Batches are locked so two concurrent orders cannot take the same units.
  */
-export async function allocateStock(tx: Tx, variantId: number, qty: number, orderId: number) {
+export async function allocateStock(tx: Tx, variantId: number, qty: number, refId: number, reason: 'sale_online' | 'sale_pos' = 'sale_online', refType = 'order') {
   const batches = await tx`
-    SELECT b.id, COALESCE((SELECT SUM(m.qty) FROM stock_movements m WHERE m.batch_id = b.id), 0)::int AS rem
+    SELECT b.id, b.qty_on_hand AS rem
     FROM batches b
-    WHERE b.variant_id = ${variantId} AND b.expiry_date >= CURRENT_DATE
+    WHERE b.variant_id = ${variantId} AND b.expiry_date >= CURRENT_DATE AND b.qty_on_hand > 0
     ORDER BY b.expiry_date, b.id
     FOR UPDATE OF b`;
   let need = qty;
@@ -27,7 +27,7 @@ export async function allocateStock(tx: Tx, variantId: number, qty: number, orde
     if (need <= 0) break;
     const take = Math.min(need, b.rem);
     if (take <= 0) continue;
-    await tx`INSERT INTO stock_movements (batch_id, qty, reason, ref_type, ref_id) VALUES (${b.id}, ${-take}, 'sale_online', 'order', ${orderId})`;
+    await tx`INSERT INTO stock_movements (batch_id, qty, reason, ref_type, ref_id) VALUES (${b.id}, ${-take}, ${reason}, ${refType}, ${refId})`;
     need -= take;
   }
   if (need > 0) throw new OrderError('insufficient_stock', { variantId, available: qty - need });

@@ -19,6 +19,9 @@ const P: Record<string, string> = {
   chevron: 'M6 9l6 6 6-6',
   x: 'M6 6l12 12M18 6L6 18',
   alert: 'M12 9v4M12 17h.01M10.3 3.9L2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+  pill: 'M10.5 20.5a4.95 4.95 0 0 1-7-7l10-10a4.95 4.95 0 0 1 7 7zM8.5 8.5l7 7',
+  box: 'M21 8l-9-5-9 5v8l9 5 9-5zM3.3 7.5L12 12.5l8.7-5M12 22V12.5',
+  cart: 'M3 4h2l2.4 11.5a1 1 0 0 0 1 .8h8.8a1 1 0 0 0 1-.8L20 8H6M9.5 20.5h.01M17 20.5h.01',
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
 };
 export type IconName = keyof typeof P;
@@ -36,4 +39,15 @@ export function useErr() {
     const k = `err.${e.code}` as Key;
     return t(k, { n: e.count ?? 0 }) === k ? t('err.error') : t(k, { n: e.count ?? 0 });
   };
+}
+
+/** Table footer with page controls. */
+export function Pager({ page, size, total, onPage, noun }: { page: number; size: number; total: number; onPage: (p: number) => void; noun: string }) {
+  const from = total ? (page - 1) * size + 1 : 0, to = Math.min(page * size, total);
+  return (
+    <footer className="tfoot">
+      <span>{from}–{to} of {total} {noun}</span>
+      <span className="pg"><button className="btn" disabled={page <= 1} onClick={() => onPage(page - 1)}>Prev</button><button className="btn" disabled={to >= total} onClick={() => onPage(page + 1)}>Next</button></span>
+    </footer>
+  );
 }

@@ -15,8 +15,8 @@ export type Staff = { id: number; email: string; name: string; role: Role };
 /** What each role may do. Admin may do everything. */
 const PERMS: Record<Role, string[]> = {
   admin: ['*'],
-  pharmacist: ['self', 'orders.read', 'orders.update', 'catalog.read'],
-  cashier: ['self', 'orders.read', 'catalog.read'],
+  pharmacist: ['self', 'orders.read', 'orders.update', 'catalog.read', 'products.write', 'stock.read', 'stock.write'],
+  cashier: ['self', 'orders.read', 'catalog.read', 'stock.read'],
 };
 export const can = (role: Role, perm: string) => PERMS[role].includes('*') || PERMS[role].includes(perm);
 
